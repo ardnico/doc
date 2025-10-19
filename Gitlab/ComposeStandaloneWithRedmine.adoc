@@ -1,0 +1,188 @@
+= GitLab + Redmine スタンドアロン環境構築手順書
+:author: システム管理チーム
+:revdate: 2025-10-19
+:toc:
+:toclevels: 3
+:icons: font
+:sectnums:
+
+== 概要
+
+**!下記内容及びスクリプトについては生成直後のものでまだ未チェックです。
+テスト実行後に必要に応じて修正を加えます。!**
+
+本ドキュメントは、完全閉域環境（インターネット非接続）における
+GitLab Enterprise/Community Edition および Redmine のスタンドアロン構築手順を示す。
+
+証明書は社内CAによって発行され、GitLabとRedmineの双方で同一証明書を使用する。
+
+== 前提条件
+
+* 対象OS: Ubuntu 22.04 / Debian 12 / RHEL 8-9 / Amazon Linux 2, 2023 / SLES 15
+* オフライン構築用マシン（ビルド環境）: インターネット接続可能
+* スタンドアロン環境マシン: インターネット非接続
+* GitLab 及び Redmine の運用ユーザ: `root` または `sudo` 権限
+* CA証明書およびサーバ証明書 (`.crt` / `.key`) は事前配布済み
+
+== 1. 準備作業（オンライン環境）
+
+まず、依存パッケージをダウンロードする。
+
+[source,bash]
+----
+$ chmod +x download_pkgs.sh
+$ ./download_pkgs.sh --gitlab_version 18.5.0 --arch amd64
+----
+
+このスクリプトは以下を行う:
+
+* GitLab本体パッケージ（EEまたはCE）をダウンロード
+* 依存パッケージを `gitlab_deps/` ディレクトリへ保存
+* Redmine関連パッケージを `redmine_deps/` へ保存
+* 証明書関連（OpenSSL等）を `cert_deps/` へ保存
+* certbot関連（自動更新ジョブ用）を `certbot_deps/` へ保存
+
+完了後、これらのディレクトリをUSBメモリ等でオフライン環境へ転送する。
+
+----
+usb/
+ ├─ gitlab_deps/
+ ├─ redmine_deps/
+ ├─ cert_deps/
+ ├─ certbot_deps/
+ └─ gitlab-ee_18.5.0-ee.0_amd64.deb
+----
+
+== 2. GitLab/Redmine インストール（オフライン環境）
+
+オフライン側で以下のスクリプトを実行する。
+
+[source,bash]
+----
+$ chmod +x setup_standalone_env.sh
+$ ./setup_standalone_env.sh
+----
+
+このスクリプトは以下を実施する。
+
+1. 依存パッケージをローカルリポジトリに登録 (`dpkg -i` or `dnf localinstall`)
+2. GitLab のオムニバスパッケージをインストール
+3. GitLab設定ファイル(`/etc/gitlab/gitlab.rb`)へ証明書設定を反映
+4. Redmine を同一ホストまたは別仮想ホストにインストール
+5. ApacheまたはNginx設定で、同一証明書をRedmineへ適用
+6. GitLab再構成 (`gitlab-ctl reconfigure`) を実行
+
+== 3. HTTPS設定（共通証明書利用）
+
+社内CAで発行した証明書を `/etc/ssl/private/` に配置する。
+
+[source,bash]
+----
+/etc/ssl/private/
+ ├─ server.crt
+ ├─ server.key
+ └─ ca-chain.crt
+----
+
+GitLab設定例:
+
+[source,bash]
+----
+external_url "https://gitlab.local"
+nginx['redirect_http_to_https'] = true
+nginx['ssl_certificate'] = "/etc/ssl/private/server.crt"
+nginx['ssl_certificate_key'] = "/etc/ssl/private/server.key"
+nginx['ssl_trusted_certificate'] = "/etc/ssl/private/ca-chain.crt"
+----
+
+Redmine (Apache版) 設定例:
+
+[source,bash]
+----
+<VirtualHost *:443>
+  ServerName redmine.local
+  DocumentRoot /var/www/redmine/public
+  SSLEngine on
+  SSLCertificateFile /etc/ssl/private/server.crt
+  SSLCertificateKeyFile /etc/ssl/private/server.key
+  SSLCertificateChainFile /etc/ssl/private/ca-chain.crt
+</VirtualHost>
+----
+
+Nginx版の場合は `/etc/nginx/sites-available/redmine.conf` に同様の設定を追加する。
+
+== 4. GitLab と Redmine の連携設定
+
+Redmineの管理画面 → 「管理」→「リポジトリ」→「Git」 を選択し、
+`/var/opt/gitlab/git-data/repositories` を指定する。
+
+GitLab側では以下を設定して Redmine 連携を有効化する。
+
+[source,bash]
+----
+# /etc/gitlab/gitlab.rb
+gitlab_rails['issues_tracker_redmine'] = true
+gitlab_rails['issues_tracker_redmine_url'] = 'https://redmine.local'
+gitlab_rails['issues_tracker_redmine_api_key'] = 'YOUR_REDMINE_API_KEY'
+----
+
+適用後、GitLabを再構成。
+
+[source,bash]
+----
+gitlab-ctl reconfigure
+gitlab-ctl restart
+----
+
+== 5. 自動証明書更新ジョブ（オフライン対応）
+
+`certbot` および関連Pythonモジュールをオフラインで導入済みの場合、  
+内部CAを用いて定期的にCSR生成・署名を行う自動更新ジョブを登録できる。
+
+例: `/etc/cron.monthly/renew-cert.sh`
+
+[source,bash]
+----
+#!/bin/bash
+set -e
+
+certbot certonly --manual --preferred-challenges dns \
+  -d gitlab.local -d redmine.local \
+  --config-dir /etc/letsencrypt \
+  --work-dir /var/lib/letsencrypt \
+  --logs-dir /var/log/letsencrypt
+
+systemctl reload nginx
+gitlab-ctl hup nginx
+----
+
+※実際のCA署名フローは社内ポリシーに従う。
+
+== 6. 動作確認
+
+[source,bash]
+----
+systemctl status gitlab-runsvdir
+systemctl status nginx
+curl -vk https://gitlab.local
+curl -vk https://redmine.local
+----
+
+両方のサイトで有効な証明書が認識され、  
+ブラウザに「保護された通信」と表示されることを確認する。
+
+== 7. トラブルシューティング
+
+| 症状 | 対応策 |
+|------|--------|
+| `package architecture does not match system` | ダウンロード時に `--arch` を正しく指定する |
+| ブラウザで「保護されていない通信」 | 中間証明書 (`ca-chain.crt`) のパス指定を確認 |
+| RedmineがHTTPで開く | Apache/NginxのSSL設定を有効化したか確認 |
+
+== まとめ
+
+本手順により、外部接続不要な完全閉域環境においても、
+GitLabとRedmineを安全かつ連携可能な形で構築できる。
+
+社内PKIを用いた証明書更新の自動化も可能であり、
+継続的な運用の自律化に繋がる。

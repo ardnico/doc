@@ -1,2 +1,0 @@
-# doc
-knowledge for me
