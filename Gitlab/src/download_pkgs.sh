@@ -11,17 +11,36 @@ Options:
 EOF
 }
 
-edition="ee"
+# デフォルト値
 gitlab_version="18.5.0"
 arch=""
+expand="rpm"
+edition="ce"
 
+# 引数処理
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --edition) edition="$2"; shift 2 ;;
-    --gitlab_version) gitlab_version="$2"; shift 2 ;;
-    --arch) arch="$2"; shift 2 ;;
-    -h|--help) usage; exit 0 ;;
-    *) echo "Unknown option: $1"; usage; exit 1 ;;
+    --gitlab_version)
+      gitlab_version="$2"
+      shift 2
+      ;;
+    --arch)
+      arch="$2"
+      shift 2
+      ;;
+    --edition)
+      edition="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      usage
+      exit 1
+      ;;
   esac
 done
 
@@ -29,6 +48,38 @@ done
 expand="rpm"
 package_dir=""
 os_family="rpm"
+
+# アーキテクチャ未指定なら選択式
+if [[ -z "$arch" ]]; then
+  echo "Select architecture:"
+  echo "1) amd64"
+  echo "2) arm64"
+  echo "3) amazon2.aarch64"
+  echo "4) amazon2.x86_64"
+  echo "5) amazon2023.aarch64"
+  echo "6) el9.aarch64"
+  echo "7) el9.x86_64"
+  echo "8) el8.x86_64"
+  echo "9) el8.aarch64"
+  echo "10) sles15.aarch64"
+  echo "11) sles15.x86_64"
+  read -rp "Enter choice [1-11]: " choice
+  case $choice in
+    1) arch="amd64" ;;
+    2) arch="arm64" ;;
+    3) arch="amazon2.aarch64" ;;
+    4) arch="amazon2.x86_64" ;;
+    5) arch="amazon2023.aarch64" ;;
+    6) arch="el9.aarch64" ;;
+    7) arch="el9.x86_64" ;;
+    8) arch="el8.x86_64" ;;
+    9) arch="el8.aarch64" ;;
+    10) arch="sles15.aarch64" ;;
+    11) arch="sles15.x86_64" ;;
+    *) echo "Invalid choice"; exit 1 ;;
+  esac
+fi
+
 
 case "$arch" in
   amd64)
@@ -69,7 +120,7 @@ cd "$download_dir"
 
 # --- GitLab本体ダウンロード ---
 package_name="gitlab-${edition}"
-filename="${package_name}-${gitlab_version}-${edition}.0.${arch}.${expand}"
+filename="${package_name}_${gitlab_version}-${edition}.0_${arch}.${expand}"
 url="https://packages.gitlab.com/gitlab/${package_name}/packages/${package_dir}/${filename}/download.${expand}"
 
 echo "Downloading GitLab ${edition^^} ${gitlab_version} for ${arch}..."
