@@ -1,3 +1,6 @@
+# flow chart
+
+'''marmaid
 flowchart TD
   Start([Start])
   Start --> Context{"実行コンテキスト\nユーザ空間かカーネル空間か?"}
@@ -53,3 +56,4 @@ flowchart TD
   U_done --> End1
   U_done2 --> End1
   U_posix --> End1
+'''
