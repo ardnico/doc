@@ -32,6 +32,9 @@ GitLab Enterprise/Community Edition および Redmine のスタンドアロン�
 ----
 $ chmod +x download_pkgs.sh
 $ ./download_pkgs.sh --gitlab_version 18.5.0 --arch amd64
+# オプション指定の詳細は-hで確認
+# アーキテクチャの確認方法: 
+# dpkg --print-architecture / uname -m
 ----
 
 このスクリプトは以下を行う:
