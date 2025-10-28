@@ -4,24 +4,33 @@
 :toc:
 :toclevels: 3
 :sectnums:
+
 This is the documentation directory for usually asciidoc files. 
 
 It contains various guides and manuals related to the project interested in.
 
 == Contents
-include::./content_list.adoc[]
+
+include::content_list.adoc[]
 
 == Contributing
+
 If you would like to contribute to the documentation, please follow these steps:
+
 1. Fork the repository and create a new branch for your changes.
 2. Make your changes and ensure they are well-documented.
 3. Submit a pull request with a clear description of your changes.
 4. Engage in the review process and make any necessary revisions.
 We appreciate your contributions to improve the documentation!
+
 == License
+
 Show the LICENSE file for details.
 
 == Acknowledgments
+
 We would like to thank all contributors and users who have helped improve the documentation over time.
+
 == Contact
+
 For any questions or feedback regarding the documentation, please reach out to the project maintainers through the official communication channels.
