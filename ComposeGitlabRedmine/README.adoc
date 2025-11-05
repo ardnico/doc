@@ -1,0 +1,147 @@
+= Gitlab Redmine構築手順(オフライン環境用)
+:toc: left
+:toclevels: 3
+:icons: font
+:sectnums:
+
+== 概要
+
+本書は **Ubuntu 22.04** 環境にて、ネットワーク接続が遮断されたサーバ（picsv00150）に  
+「Redmine」「GitLab」をスタンドアロンで導入するための**事前資材準備手順**をまとめたものです。
+
+== 目的
+
+- 完全オフライン環境での導入に必要な `.deb` パッケージ、ソース、証明書を収集する  
+- 収集した資材を `/opt/offline/` に配置し、インストールスクリプト（`setup_redmine_gitlab.sh`）が参照可能にする  
+
+== 実施環境
+
+|項目|内容|
+|----|----|
+|対象OS|Ubuntu 22.04 (Jammy)|
+|実行環境|外部ネットワーク接続可能な任意のLinuxマシン|
+|転送方法|USBメモリ または SSH経由でのscp推奨|
+|出力先|`./offline_assets` ディレクトリ|
+
+== 手順概要
+
+. インターネット接続が可能なUbuntuマシン上で `prepare_offline_assets.sh` を実行する  
+. スクリプトが以下の資材を自動収集する
+  * Redmineソース (`redmine-5.x.tar.gz`)
+  * GitLab Omnibusパッケージ (`gitlab-ce_x.y.z.deb`)
+  * 必要な `.deb` 依存関係（Ruby, Nginx, SQLite など）
+  * GitLab連携用 Redmineプラグイン例（`redmine-gitlab-hook`）
+. `/offline_assets` ディレクトリ以下の構成が自動生成される  
+
+== 生成ディレクトリ構造
+
+[source,text]
+----
+offline_assets/
+├─ debs/          # Ruby, Git, Nginx, SQLiteなどの依存パッケージ
+├─ gitlab/        # GitLab Omnibus .deb
+├─ redmine/
+│   ├─ redmine-x.y.z.tar.gz
+│   └─ plugins/   # Redmine-GitLabプラグインなど
+└─ certs/
+    └─ README.txt  # 証明書置き場
+----
+
+== 証明書の準備
+
+`offline_assets/certs/` に以下を配置する。  
+証明書は picsv00150 の FQDN (`CN=picsv00150`) に合わせること。
+
+|ファイル名|内容|
+|-----------|----|
+|`picsv00150.crt`| サーバ証明書（内部CA署名）|
+|`picsv00150.key`| 秘密鍵（600権限を推奨）|
+|`ca.crt`| 内部CAのルート証明書（任意）|
+
+== 転送
+
+収集完了後、オフラインサーバへ転送：
+
+[source,bash]
+----
+scp -r offline_assets root@picsv00150:/opt/offline
+----
+
+またはUSBメディアで物理コピー。
+
+== オフライン環境での利用
+
+picsv00150 上で以下を実行：
+
+[source,bash]
+----
+sudo /root/setup_redmine_gitlab.sh
+----
+
+これにより Redmine + GitLab のスタンドアロン環境が自動構築される。
+
+== 参考
+
+* Redmine公式: https://www.redmine.org/
+* GitLab CEパッケージ: https://packages.gitlab.com/gitlab/gitlab-ce
+* プラグイン例: https://github.com/akabekobeko/redmine-gitlab-hook
+
+== トラブルシュート
+
+* `.deb` 依存関係が不足する場合  
+  → `apt-get download` では依存漏れが出ることがあるため、`apt-get install --print-uris` で再確認。  
+* `wget` が証明書エラーで止まる場合  
+  → `--no-check-certificate` オプションを一時的に追加して回避可能。  
+
+== まとめ
+
+この手順により、ネットワーク遮断環境においても Redmine と GitLab の構築を再現できる。  
+本ドキュメントおよびスクリプトは保守用テンプレートとして再利用可能。
+
+== 事前に用意しておくもの（ローカル配置）
+
+[bash]
+----
+/opt/offline/
+├─ certs/
+│   ├─ picsv00150.crt     # 内部CA発行サーバ証明書（CN=picsv00150 を推奨）
+│   ├─ picsv00150.key     # 秘密鍵（600権限を推奨）
+│   └─ ca.crt             # ルート/中間CA 連結チェーン（必要なら）
+├─ gitlab/
+│   └─ gitlab-omnibus.deb # GitLab Omnibus の .deb（CE/EE どちらでも可）
+├─ redmine/
+│   ├─ redmine.tar.gz     # Redmine本体のソース一式（オフライン同梱版）
+│   │                      # 例： vendor/cache に全Gemを格納済みのもの
+│   ├─ Gemfile.local      # （任意）追加Gemがあれば
+│   └─ plugins/
+│       └─ <任意のプラグイン>.tar.gz  # 使いたいRedmineプラグインのtar
+└─ debs/
+    ├─ nginx_*.deb
+    ├─ ruby-full_*.deb / ruby_*.deb / ruby-dev_*.deb
+    ├─ build-essential_*.deb
+    ├─ git_*.deb
+    ├─ imagemagick_*.deb
+    ├─ libsqlite3-dev_*.deb
+    ├─ sqlite3_*.deb
+    ├─ libffi-dev_*.deb libreadline-dev_*.deb zlib1g-dev_*.deb
+    └─ （上記が要求する依存 .deb すべて）
+----
+
+** ポイント
+- データベースはオフラインの負担を減らすため SQLite 構成（小〜中規模なら十分。将来PostgreSQLへ移行可）。
+- GitLab は Omnibus を 8443/tcp、Redmine は Nginx(+Puma) で 9443/tcp（同一ホスト名で衝突回避）。
+- 証明書は picsv00150 のFQDN一致で作ってください（Gatewayでポートフォワードする場合もCN不一致を避けるのが吉）。
+- Redmine ↔ GitLab の最終的な連携GUI操作はバージョンやプラグイン仕様依存なので、トークン自動発行までスクリプト化し、GUIで貼り付けるだけにしています（ここでの勝手なプラグイン内部API自動化は“壊れやすい”＝オフライン保守に不向き）。
+
+== 実行手順
+
+** スクリプトを /root/setup_redmine_gitlab.sh に保存し、実行権付与：
+[bash]
+----
+chmod +x /root/setup_redmine_gitlab.sh
+----
+** 実行：
+[bash]
+----
+sudo /root/setup_redmine_gitlab.sh
+----
