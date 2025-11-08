@@ -1,0 +1,15 @@
+= Workflow samples
+
+== Usage
+put the following files in your repository to enable the respective workflows.
+
+[memo]
+----
+your-repo/
+└──.commitlintrc.yml
+└──.github/
+    └── workflows/
+        ├── python_ci.yml
+        ├── rust_ci.yml
+        └── commit_lint.yml
+----

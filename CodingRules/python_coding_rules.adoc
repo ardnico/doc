@@ -1,0 +1,123 @@
+= Python Code Style Guide
+:toc: left
+:toclevels: 2
+:sectnums:
+
+== Purpose
+This document defines the coding standards for Python projects under this organization.  
+All projects should follow these rules to maintain consistency, readability, and long-term maintainability.
+
+== General Principles
+- Follow the spirit of *PEP 8*.
+- Prioritize clarity over cleverness.
+- Write code that explains itself; comments are for *why*, not *what*.
+- Keep functions small and cohesive — one responsibility per function.
+
+== Code Formatting
+- Use **4 spaces** per indentation level.
+- Line length should not exceed **100 characters**.
+- Use **UTF-8** encoding and Unix-style line endings (`\n`).
+- Imports must be grouped in this order:
+  1. Standard library imports
+  2. Third-party imports
+  3. Local application imports  
+  Separate each group with a blank line.
+
+=== Example
+[source,python]
+----
+import os
+import sys
+
+import requests
+
+from app.utils import parse_config
+----
+
+== Type Hints
+- Use **type hints** for all function parameters and return values.
+- Use `Optional` and `Union` where appropriate.
+- Use `typing.Self` or `TypeVar` in class methods when needed.
+- Run `mypy` as part of CI if possible.
+
+[source,python]
+----
+def fetch_data(url: str, timeout: int = 10) -> dict[str, str]:
+    ...
+----
+
+== Naming Conventions
+- Use `snake_case` for variables and functions.
+- Use `PascalCase` for classes.
+- Use `UPPER_CASE` for constants.
+- Private members should start with an underscore (`_`).
+- Avoid abbreviations unless universally recognized (e.g., `id`, `url`, `db`).
+
+== Documentation
+- Every public function, class, and module must have a docstring.
+- Follow the *Google style* or *NumPy style* consistently across a project.
+- Include examples when appropriate.
+
+[source,python]
+----
+def connect_db(uri: str) -> Connection:
+    """Connect to the database.
+
+    Args:
+        uri: Database connection URI.
+
+    Returns:
+        Connection object.
+
+    Raises:
+        ConnectionError: If the database cannot be reached.
+    """
+----
+
+== Error Handling
+- Prefer explicit exceptions over silent failures.
+- Never use bare `except:` — always catch specific exceptions.
+- Avoid using exceptions for normal control flow.
+
+[source,python]
+----
+try:
+    process_file(path)
+except FileNotFoundError:
+    logger.error(f"File not found: {path}")
+----
+
+== Logging
+- Use the built-in `logging` module instead of `print()`.
+- Configure loggers in one place (e.g., `logging_config.py`).
+- Use meaningful log levels (`debug`, `info`, `warning`, `error`, `critical`).
+
+== Testing
+- Use **pytest** as the default testing framework.
+- Name test files as `test_*.py` and place them under `tests/`.
+- Keep tests isolated and deterministic.
+- Write unit tests for new functions and regression tests for fixed bugs.
+
+[source,python]
+----
+def test_addition():
+    assert add(2, 3) == 5
+----
+
+== Dependencies
+- Use a dependency manager such as **poetry** or **pip-tools**.
+- Always pin exact versions in the lock file.
+- Avoid adding unnecessary dependencies; prefer the standard library when possible.
+
+== Security and Linting
+- Run **flake8**, **black**, and **mypy** in CI pipelines.
+- Avoid using `eval()` or `exec()` unless absolutely necessary.
+- Sanitize external input and use environment variables for secrets.
+
+== Version Control and Commits
+- Follow the organization's *Commit Rules* (see `commit_rules.adoc`).
+- Commit only meaningful units of change with descriptive messages.
+
+== Summary
+Code should be readable by humans first and computers second.  
+Consistency across all projects ensures maintainability, reliability, and shared understanding among contributors.

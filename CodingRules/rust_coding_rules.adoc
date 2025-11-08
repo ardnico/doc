@@ -1,0 +1,154 @@
+= Rust Code Style Guide
+:toc: left
+:toclevels: 2
+:sectnums:
+
+== Purpose
+This document defines the coding standards for Rust projects under this organization.  
+All Rust codebases should follow these rules to maintain clarity, reliability, and a consistent development experience across projects.
+
+== General Principles
+- Follow the *Rust Style Guide* and *Rust API Guidelines*.
+- Write clean, safe, and idiomatic Rust.
+- Prefer readability and maintainability over micro-optimizations.
+- Keep modules small and focused; avoid deep nesting when possible.
+
+== Code Formatting
+- All code must be formatted using `rustfmt` with the project’s configuration.
+- Do not manually align code or adjust spacing to “look pretty”.
+- Use Unix-style line endings (`\n`) and UTF-8 encoding.
+
+== Naming Conventions
+- **Modules, variables, and functions:** `snake_case`
+- **Structs, enums, and traits:** `PascalCase`
+- **Constants and statics:** `UPPER_CASE`
+- **Type parameters:** short and descriptive (e.g., `T`, `U`, `K`, `V`)
+- Avoid unnecessary abbreviations; prefer explicit names.
+
+[source,rust]
+----
+struct UserProfile {
+    name: String,
+    age: u32,
+}
+
+fn load_user_profile(path: &str) -> Result<UserProfile, LoadError> {
+    ...
+}
+----
+
+== Documentation
+- Every public item (functions, structs, enums, traits, modules) must have a doc comment.
+- Use `///` for documentation comments and `//!` for module-level documentation.
+- Include examples and usage snippets where appropriate.
+- Prefer Markdown formatting for readability.
+
+[source,rust]
+----
+/// Loads configuration from a TOML file.
+///
+/// # Errors
+/// Returns an error if the file cannot be read or parsed.
+fn load_config(path: &Path) -> Result<Config, ConfigError> {
+    ...
+}
+----
+
+== Error Handling
+- Prefer `Result<T, E>` over panics for recoverable errors.
+- Use `panic!()` only for unrecoverable logic errors.
+- Implement `std::error::Error` for custom error types.
+- Use `thiserror` crate for ergonomic error definitions if appropriate.
+
+[source,rust]
+----
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum LoadError {
+    #[error("file not found: {0}")]
+    FileNotFound(String),
+    #[error("invalid format")]
+    InvalidFormat,
+}
+----
+
+== Safety and Concurrency
+- Avoid using `unsafe` unless absolutely necessary; document every `unsafe` block with justification.
+- Prefer immutable data and thread-safe types (`Arc`, `RwLock`, etc.) when sharing state.
+- Minimize global mutable state.
+
+[source,rust]
+----
+// SAFETY: Access to `BUFFER` is synchronized via a Mutex.
+unsafe {
+    BUFFER.write(data);
+}
+----
+
+== Project Structure
+- Organize code by feature, not by type.
+- Avoid very large modules; prefer submodules or crates for separation.
+- Example structure:
+
+[source,text]
+----
+project/
+├── src/
+│   ├── main.rs
+│   ├── lib.rs
+│   ├── config.rs
+│   ├── models/
+│   │   ├── user.rs
+│   │   └── post.rs
+│   └── utils.rs
+├── tests/
+├── Cargo.toml
+└── README.md
+----
+
+== Dependencies
+- Use stable crates from `crates.io` whenever possible.
+- Pin dependency versions in `Cargo.toml`.
+- Avoid unnecessary dependencies; prefer the standard library first.
+- Audit third-party crates periodically for security issues.
+
+== Testing
+- Use the built-in testing framework (`cargo test`).
+- Organize tests as:
+  - **Unit tests** inside the same module (`#[cfg(test)]`).
+  - **Integration tests** in the `tests/` directory.
+- Tests must be deterministic and independent.
+- Use `assert_eq!`, `assert!`, and custom assertion helpers as needed.
+
+[source,rust]
+----
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_addition() {
+        assert_eq!(add(2, 3), 5);
+    }
+}
+----
+
+== Linting and Quality
+- Run `clippy` regularly and fix warnings before committing.
+- Treat `clippy::pedantic` warnings seriously unless intentionally ignored with a justification comment.
+- Use `cargo fmt --check` and `cargo clippy -- -D warnings` in CI.
+
+== Version Control and Commits
+- Follow the shared *Commit Rules* (`commit_rules.adoc`).
+- Keep commits atomic and descriptive.
+- Avoid committing build artifacts, binaries, or large test data.
+
+== Performance
+- Optimize only after profiling.
+- Prefer simple, idiomatic code before low-level optimizations.
+- Use benchmarks (`#[bench]` or `criterion`) to measure improvements objectively.
+
+== Summary
+Rust enforces safety and clarity by design; your code should reinforce those principles.  
+A consistent style across projects ensures maintainability, ease of onboarding, and long-term reliability.
