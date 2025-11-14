@@ -1,2 +1,5 @@
 == Content List
-1. link:./Gitlab/ComposeStandaloneWithRedmine.adoc[How To Compose Gitlab(Standalone) + Redmine]
+
+. link:./Gitlab/ComposeStandaloneWithRedmine.adoc[How To Compose Gitlab(Standalone) + Redmine]
+. link:./learning/windriver_linux.adoc[Wind River Linux 学習ガイド]
+. link:./learning/yocto_project.adoc[Yocto Project 学習ガイド]

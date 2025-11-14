@@ -1,0 +1,53 @@
+== 第6章: SDK提供とアプリケーション開発フロー
+Yocto Projectはクロス開発を支援するSDKを自動生成できます。本章ではStandard SDKとExtensible SDK(eSDK)の違い、`devtool`の活用、アプリ開発チームとの連携手法を整理します。
+
+=== SDKの種類
+|種類|特徴|生成コマンド|用途|
+|---|---|---|---|
+|Standard SDK|ターゲット用ツールチェーンとヘッダ/ライブラリをバイナリ配布|`bitbake core-image-base -c populate_sdk`|ビルド済みライブラリと固定APIで十分な場合|
+|Extensible SDK(eSDK)|BitBakeとメタデータを含み、レシピの再ビルドや`devtool`が使用可能|`bitbake core-image-base -c populate_sdk_ext`|アプリ開発とプラットフォーム開発の橋渡し|
+
+=== SDK構築時の設定
+[source,bitbake]
+----
+SDKMACHINE ?= "x86_64"
+SDKIMAGE_FEATURES += "dev-pkgs staticdev-pkgs"
+TOOLCHAIN_HOST_TASK += "nativesdk-cmake"
+TOOLCHAIN_TARGET_TASK += "packagegroup-acme-sdk"
+----
+
+* `SDKMACHINE`でSDKを実行するホストアーキテクチャを指定。
+* `TOOLCHAIN_TARGET_TASK`にアプリ開発で必要なパッケージグループを追加。
+
+=== SDK署名と検証
+* `SDK_USE_LOCAL_CONF = "1"`で`local.conf`をSDKに同梱し、環境差異を排除。
+* `SDK_ENABLE_SIGNING = "1"`で署名されたSDKインストーラを生成。
+* `OECORE_DISTRO_VERSION`や`OECORE_SDK_VERSION`を利用してバージョン管理。
+
+=== `devtool`によるアプリ開発フロー
+[source,shell]
+----
+$ source acme-image-extsdk/environment-setup-x86_64-pokysdk-linux
+$ devtool add acme-gui git://git.example.com/acme/gui.git
+$ devtool build acme-gui
+$ devtool deploy-target acme-gui root@192.0.2.10
+----
+
+`devtool add`が新規レシピを自動生成し、`deploy-target`でターゲットへ配置できます。ビルドしたレシピは`devtool finish`でメインレイヤへ反映します。
+
+=== IDE連携
+* Visual Studio Code: `meta-ide-support`を追加し、`bitbake -c populate_sdk_ext`で生成されるCMake Toolchainファイルを利用。
+* CLion/Eclipse: CMake/MakefileベースのプロジェクトとしてSDKを登録。
+* `language-server`プロトコル対応ツールに`compile_commands.json`を提供するため、`INHERIT += "cmake_qt5"`等で生成を有効化。
+
+=== アプリ開発チームとの作業分担
+[%autowidth.stretch,options="header"]
+|===
+|役割|プラットフォームチーム|アプリチーム|共有成果物
+|SDK提供|SDK生成、テスト、署名|SDKインストール、環境差異報告|SDKリリースノート、チェンジログ
+|レシピ更新|コアライブラリ更新、`devtool finish`|アプリレシピ整備、`devtool modify`|レイヤリポジトリ
+|品質保証|`ptest`, `testimage`, SBOM更新|ユニット/統合テスト、`ptest`結果提供|CIレポート、テストログ
+|===
+
+=== Wind River Linuxとの連携
+WRLのeSDKも`populate_sdk_ext`で生成され、Yocto Projectと同様のワークフローが利用できます。Yocto Projectで確立したSDK提供プロセスをWRLに適用すると、商用サポートと社内開発の分担が明確になります。

@@ -1,0 +1,43 @@
+== 第1章: Yocto Projectの全体像とアーキテクチャ
+Yocto ProjectはBitBakeビルドエンジン、OpenEmbedded Coreメタデータ、リファレンスディストリビューション`poky`を中心としたエコシステムです。本章では構成要素の役割とリリースサイクル、コミュニティ運営の仕組みを俯瞰します。
+
+=== コアコンポーネント
+[cols="1,2,2",options="header"]
+|===
+|コンポーネント|役割|主要ディレクトリ/コマンド
+|BitBake|依存関係解決とタスク実行を担うビルドツール|`bitbake`, `lib/bb/`(パーサ、タスクランナー)
+|OpenEmbedded-Core (OE-Core)|共通レイヤ。コンパイラ、基本ライブラリ、システムツールのレシピ群|`meta/`配下の`recipes-*`
+|Poky|リファレンスディストリビューション。OE-Core + `meta-poky` + `meta-yocto-bsp`|`oe-init-build-env`, `meta-poky/conf/distro/poky.conf`
+|BitBakeサーバ|長時間動作するタスクスケジューラで、複数クライアントからのジョブ受付に対応|`bitbake -m`(サーバモード起動)、`bitbake -m --observe-only`
+|===
+
+=== メタデータとビルド成果物の関係
+Yocto Projectでは、レシピ(`.bb`)、設定(`.conf`)、クラス(`.bbclass`)が組み合わさってタスクグラフを生成します。タスクグラフは`do_fetch`→`do_unpack`→`do_patch`→`do_configure`→`do_compile`→`do_install`→`do_package`などのステップで構成され、成果物は以下の通りです。
+
+* ルートファイルシステムイメージ(`tmp/deploy/images/<machine>/*.wic`, `*.tar.bz2`)
+* SDK(`tmp/deploy/sdk/*.sh`)
+* sstateキャッシュ(`sstate-cache/`)
+
+=== リリースサイクルとLTS
+Yocto Projectは年2回のリリース(4月、10月)と約2年間のLong-Term Support(LTS)ブランチを提供します。製品向けにはLTSブランチ(例: kirkstone、langdale)の採用が推奨され、セキュリティフィックスを定期的に取得するために`git checkout`で該当ブランチを追従します。
+
+[NOTE]
+====
+LTSブランチはセキュリティパッチのバックポート対象が限定されるため、ハードウェアサポートの観点で複数レイヤの互換性を確認する必要があります。`MACHINE`に対応するBSPが同じブランチをサポートするか事前に確認しましょう。
+====
+
+=== コミュニティプロセス
+* **仕様策定**: Yocto Project Technical Steering Committee(TSC)がアジェンダを管理。
+* **パッチフロー**: `oe-core`や`bitbake`は`git send-email`によるパッチ投稿が主流。`patchwork`でキューを可視化。
+* **バグ管理**: Bugzillaでコンポーネント別に課題登録。再現ログ、`bitbake-dumpsig`、`buildhistory`の添付が推奨。
+* **リリースノート**: 各リリースでdeprecated項目、推奨設定が明示されるのでアップグレード時の必読資料となる。
+
+=== Wind River Linuxとの共通点/相違点
+|===
+|観点|共通点|相違点
+|メタデータ|Yocto Projectのレイヤ構造、BitBakeタスクを継承|WRL独自レイヤ(`meta-windriver`)が追加され、商用サポート向け設定が標準で有効
+|ツールチェーン|`bitbake`, `devtool`, `toaster`など共通|`wrlinux-setup`などWind River専用ツールが存在
+|サポート|コミュニティベース|商用サポート契約によりCVEフィックスやテクニカルサポートが提供
+|===
+
+Yocto Projectを深く理解することで、商用ディストリビューションとの差分評価や社内ディストリビューション開発に活かせます。

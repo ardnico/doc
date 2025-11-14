@@ -1,0 +1,99 @@
+== 第4章: レシピ開発とクラス活用の実践
+レシピ(`.bb`)はYocto Projectでソフトウェアを取得・ビルド・パッケージ化するための中心的なメタデータです。本章ではレシピ構造、クラスの継承、パッチ管理、テストフックまで詳細に解説します。
+
+=== レシピの基本構造
+[source,bitbake]
+----
+SUMMARY = "libexample: sample library"
+DESCRIPTION = "An example library with autotools build system"
+LICENSE = "MIT"
+LIC_FILES_CHKSUM = "file://COPYING;md5=3b83ef96387f14655fc854ddc3c6bd57"
+SRC_URI = "git://git.example.com/libexample.git;branch=main"
+SRCREV = "${AUTOREV}"
+S = "${WORKDIR}/git"
+
+inherit autotools pkgconfig
+
+PACKAGECONFIG ??= "ssl"
+PACKAGECONFIG[ssl] = "--enable-ssl,--disable-ssl,openssl"
+----
+
+ポイント:
+* `LIC_FILES_CHKSUM`でライセンスファイルをハッシュ管理し、変更検知。
+* `inherit autotools`が`do_configure`/`do_compile`関数を提供。
+* `PACKAGECONFIG`で依存関係とコンフィグフラグを切り替え。
+
+=== タスクフローの拡張
+独自タスクやフックを追加する場合、以下のように記述します。
+[source,bitbake]
+----
+python do_patch_append() {
+    bb.note("Applying company-specific validation")
+    bb.build.exec_func('do_company_validate', d)
+}
+
+do_company_validate() {
+    if [ ! -f ${S}/README ]; then
+        bbfatal "README not found"
+    fi
+}
+addtask company_validate after do_patch before do_configure
+----
+
+`addtask`でタスクの依存関係を明示し、ビルドグラフに組み込みます。Pythonタスクを`bb.build.exec_func`で呼び出すことで再利用性を高められます。
+
+=== パッチ管理と`devtool`
+* `SRC_URI += "file://fix-buffer-overflow.patch"`
+* `devtool modify`でワークツリーを生成し、`git format-patch`で差分を作成。
+* パッチ適用順を制御するために`SRC_URI`内で列挙順を調整、または`apply=yes`属性を指定。
+
+[EXAMPLE]
+====
+[source,shell]
+----
+$ devtool modify libexample
+$ (作業ツリーで修正)
+$ devtool finish libexample ../meta-company
+----
+`finish`コマンドがパッチをレイヤに転送し、`bbappend`や`recipes-*`を自動生成します。
+====
+
+=== クラス(`.bbclass`)の設計
+クラスは共通処理を抽象化するための手段で、`inherit`で利用します。
+
+[source,bitbake]
+----
+# classes/company-qa.bbclass
+python do_company_qa() {
+    import os
+    log_dir = d.getVar('WORKDIR') + '/qa'
+    os.makedirs(log_dir, exist_ok=True)
+    with open(os.path.join(log_dir, 'checks.txt'), 'w') as f:
+        f.write('QA checks executed')
+}
+addtask company_qa after do_install before do_package
+----
+
+`BBPATH`にクラスディレクトリが含まれていれば、任意のレシピから`inherit company-qa`で利用できます。
+
+=== バリアント制御とオーバーライド
+* `SRC_URI:append:class-target`でターゲットビルド時のみパッチ適用。
+* `FILES:${PN}-dbg += "${libdir}/.debug"`のようにパッケージごとにファイルを割り当て。
+* `COMPATIBLE_MACHINE`を利用してサポートマシンを制限。
+
+=== 署名と再現性
+* `BB_SIGNATURE_HANDLER = "OEEquivHash"`でタスクハッシュの互換性を保持。
+* `PRSERV_HOST = "localhost:0"`でバージョンアップ時に`PR`自動管理。
+
+=== テストフックの統合
+`pTEST`を有効化することでパッケージ単位のテストを実行できます。
+[source,bitbake]
+----
+inherit ptest
+SRC_URI += "file://run-ptest"
+RDEPENDS:${PN}-ptest += "bash"
+----
+
+`run-ptest`スクリプトでユニットテストを定義し、`bitbake libexample -c ptest`で実行します。CIでは`ptest-runner`ログを収集し品質基準に活用します。
+
+Yocto Projectのレシピは柔軟さの反面、保守性を損ねやすいため、クラス化や`devtool`の活用、テストフックの導入で品質を確保しましょう。
