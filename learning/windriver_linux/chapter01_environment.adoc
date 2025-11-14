@@ -105,3 +105,52 @@ chmod +x /opt/windriver/setup-sdk-product-a.sh
 * [ ] sstate cacheとダウンロードディレクトリの共有戦略を決定した。
 * [ ] SDK利用手順および環境切り替えスクリプトをチームWikiに掲載した。
 * [ ] ライセンスファイルの保管ポリシーとアクセス権をドキュメント化した。
+
+=== 追加のベストプラクティス
+
+==== コンテナ化されたビルド環境
+社内で複数バージョンのWRLを並行開発する場合、Docker/Podmanベースのビルドコンテナを用意するとホスト汚染を防げます。Wind Riverは`wrlinux-container`イメージを提供しており、以下のように利用します。
+
+[source,bash]
+----
+podman run --rm -it \
+  -v ~/wrlinux:/workspace \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  registry.windriver.com/wrlinux/wrlinux-container:23.09 \
+  /bin/bash
+----
+
+コンテナ内で`wrlinux-setup`を実行する際は、UID/GIDをホストと一致させることで生成ファイルの権限問題を回避できます。
+
+==== オフラインミラーとキャッシュ
+ネットワーク制限のある環境では、Wind Riverが提供する`repo`ミラーを活用し、社内で`downloads`ディレクトリを同期します。
+
+[source,bash]
+----
+reposync \
+  --remote=wrl-release \
+  --target=/nfs/wrlinux-mirror \
+  --release=23.09
+
+export PREMIRRORS=" \\
+    git://.*/.* file:///nfs/wrlinux-mirror/git/ \n \\
+    https?://.*/.* file:///nfs/wrlinux-mirror/sources/ \n \
+"
+----
+
+`PREMIRRORS`を設定するとBitBakeは社内ミラーを優先的に参照し、ビルドの安定性が向上します。
+
+==== ハードウェアアクセラレーションと仮想化
+QEMUによるターゲット検証を行う際は、ホスト側でKVMサポートを有効化し、以下のチェックコマンドで事前確認します。
+
+[source,bash]
+----
+egrep -c '(vmx|svm)' /proc/cpuinfo
+lsmod | grep kvm
+virt-host-validate
+----
+
+FPGAやGPUを用いたアクセラレーションを利用するプロジェクトでは、PCIeパススルーの要件(カーネルモジュール、IOMMU設定)をまとめたメモを共有し、BSPチームと早期に擦り合わせておきます。
+
+==== コンプライアンスとライセンスの準備
+Wind Riverから提供されるライセンスファイルにはプロジェクトIDが含まれるため、Gitでバージョン管理せず、アクセス制御されたストレージに保管します。内部監査向けに取得日、契約番号、担当者を記録する`LICENSE_INVENTORY.csv`などの管理表を作成しておくと、法務との連携がスムーズになります。

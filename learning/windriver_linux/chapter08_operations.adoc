@@ -53,3 +53,41 @@ Wind Riverのサポート契約を最大限活用するため、以下を整備�
 * [ ] アップデートとロールバック手順が自動化され、テスト済みである。
 * [ ] Wind Riverサポートへのエスカレーション手順が明文化されている。
 * [ ] ライフサイクル終了時のデータ移行・廃棄手順が確立されている。
+
+=== さらに磨きをかける運用プラクティス
+
+==== SLOとエラーバジェット管理
+運用品質を定量管理するため、サービスレベル目標(SLO)とエラーバジェットを設定します。WRL搭載装置の稼働率や復旧時間をPrometheusなどで計測し、SLO違反が近づいた場合はリリースフリーズや追加テストの実施判断を行います。Wind River Studioなどのクラウド管理基盤を利用する場合、SLOメトリクスをダッシュボードに集約し、意思決定の指標とします。
+
+==== フリートマネジメント
+数百〜数千台規模で装置を運用する際は、デバイス管理サービスと連携してバッチ操作や状態監視を自動化します。
+
+* `Mender`, `Hawkbit`, `SWUpdate`などのOTAサーバを採用し、WRLイメージの署名と配布を一元管理。
+* デバイス側に`python3-wrs-fleet-agent`(社内実装)などのエージェントを配布し、指示に応じて`systemctl`操作やログ収集を実行。
+* フリートID、ロケーション、通信キャリア情報を資産管理台帳に登録し、障害発生時のフィールドエンジニア派遣を迅速化。
+
+==== 運用自動化スクリプト
+運用作業の属人化を防ぐため、AnsibleやSaltStackで標準化されたPlaybookを整備します。
+
+[source,yaml]
+----
+- hosts: wrl_edge
+  gather_facts: no
+  tasks:
+    - name: Collect system report
+      command: /usr/bin/wrl-support-collect
+      register: report
+    - name: Upload report to S3
+      aws_s3:
+        bucket: wrl-support-artifacts
+        object: "{{ inventory_hostname }}/{{ ansible_date_time.iso8601 }}.tar.gz"
+        src: "{{ report.stdout }}"
+----
+
+Playbookと合わせてアクセスキーの管理、監査ログの取得方法を記載したRunbookを保守部門と共有します。
+
+==== フィードバックの継続的改善
+フィールドから得た知見を開発へ確実に還元するため、Postmortem会議や定期レトロスペクティブを実施します。指摘事項は`blameless`な文化で扱い、`action item`の進捗をJiraやBacklogでトラッキングします。Wind Riverサポートからのフィードバックも同じトラッキングボードに登録すると、改善活動が一元化されます。
+
+==== コスト最適化の高度化
+クラウドリソースを利用するビルド/テスト環境では、使用状況を可視化しスポットインスタンスや自動シャットダウンを活用します。`terraform`でインフラをコード化し、`cost-anomaly-detection`などのサービスで予算超過を早期検知します。オンプレミス環境では、ビルドサーバの仮想化基盤(VMware, OpenStack)を活用し、夜間に自動スケールダウンする仕組みを構築します。

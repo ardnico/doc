@@ -93,3 +93,42 @@ lttng view
 * [ ] SDK経由の`gdbserver`接続手順を開発者向けガイドとして配布した。
 * [ ] `perf`や`LTTng`の結果を解析する標準フォーマットをチームで定義した。
 * [ ] 不具合フィードバックのテンプレートを用意し、Wind Riverサポートとのやり取り履歴を追跡できるようにした。
+
+=== さらなる分析テクニック
+
+==== Core dumpとシンボル管理
+運用環境でのクラッシュ解析では、シンボル付きバイナリと`core`ファイルを収集する仕組みが不可欠です。`systemd-coredump`を有効化し、保存先をNFSサーバやアーカイブストレージにリダイレクトします。
+
+[source,ini]
+----
+# /etc/systemd/coredump.conf.d/10-storage.conf
+[Coredump]
+Storage=external
+ExternalSizeMax=2G
+ProcessSizeMax=2G
+----
+
+ビルド側では`INHERIT += "buildstats"`と`INHERIT += "debug-tweaks"`を併用し、`tmp/deploy/images/.../symbols/`配下のデバッグシンボルを保管します。`eu-stack`や`addr2line`を用いてコールスタックを復元し、原因特定につなげます。
+
+==== トレースとイベント相関
+複数ノードに跨る問題の場合、`fluent-bit`や`Vector`などのログ収集基盤と連携し、`trace-id`を埋め込んだログを集約します。Wind Riverのリアルタイムテンプレートでは、`trace-cmd`と`kernelshark`を組み合わせたトレーシングが推奨されており、`trace-cmd report --stat`でイベント頻度を解析できます。
+
+==== 電力・熱設計の計測
+産業機器では熱暴走や電力制限が不具合の引き金となることがあります。`powertop`, `turbostat`, `perf energy`などの計測ツールをイメージに追加し、BoM(部品表)上の制約と突き合わせて解析します。
+
+[source,bitbake]
+----
+IMAGE_INSTALL:append = " powertop turbostat"
+----
+
+計測結果はハードウェアチームにフィードバックし、ファン制御やCPUガバナ設定の調整に活用します。
+
+==== Postmortemデバッグフロー
+重大障害発生時の手順を事前に定義しておくと、対応が迅速になります。
+
+1. アラート受信後、`systemd-analyze blame`で起動遅延や失敗サービスを確認。
+2. `journalctl -b -1`で前回ブートのログを抽出し、再起動直前のイベントを特定。
+3. `crash`ユーティリティで`vmcore`を解析し、`bt`や`ps`コマンドでカーネルスレッドの状態を確認。
+4. Wind Riverサポートへのエスカレーション時に、コアダンプ、`manifest`、再現手順を添付。
+
+このフローをRunbook化し、シフト要員でも同じ手順を踏めるよう訓練しておきます。
