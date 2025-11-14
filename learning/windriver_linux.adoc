@@ -1,45 +1,116 @@
 = Wind River Linux 学習ドキュメント
 :toc:
-:toclevels: 2
+:toclevels: 3
 
-== 序章: 学習の目的と全体像
-Wind River LinuxはWind River Systemsが提供する商用組み込みLinuxディストリビューションで、Yocto Projectをベースに産業用途で求められる長期保守やサポート体制を備えています。本ドキュメントは、業務でWind River Linuxを扱うエンジニアが効率的に学習を進めるためのガイドです。まずはWind River Linuxの背景と、今後学ぶべきトピックの位置付けを整理します。
+== 序章: Wind River Linuxとは
+Wind River Linuxは、組み込み機器や産業機器向けに最適化された商用ディストリビューションです。組み込み向けのリファレンスプラットフォームを提供するYocto Projectをベースにしており、長期供給(LTS: Long Term Support)やカスタマイズサービスなど、産業グレードに求められる要件をサポートします。
 
-=== 想定読者
-* 組み込みLinuxの基礎知識(クロスコンパイル、ルートファイルシステムの構造など)を有し、Wind River Linuxに初めて触れるエンジニア。
-* 既にYocto ProjectやBitBakeを扱った経験があり、Wind River特有の拡張や商用サポートの活用方法を理解したい担当者。
+* *Yocto Project*: 組み込みLinuxのためのビルドシステム・メタデータ集で、BitBakeビルドツールとレイヤ構造を中心に構成されます。
+* *商用サポート*: Wind River社が提供するメンテナンス、バグ修正、セキュリティアップデート、認証支援を含むサービスです。
 
-=== 学習目標
-* Wind River Linuxが採用される背景と製品ポートフォリオを把握する。
-* Yocto Projectとの関係、Wind River独自のレイヤやツールチェーンの役割を理解する。
-* 今後取り扱う各章(環境構築、ビルド、カスタマイズ、BSP、セキュリティ、ライフサイクル管理など)の学習順序を明確にする。
-
-=== Wind River Linuxの位置付け
-Wind River Linuxは、標準的なYocto Projectベースディストリビューションに対し以下のような付加価値を提供します。
-
-* *長期サポート(LTS)*: Wind Riverが提供する商用サポート契約により、長期にわたるバグ修正・CVE対応が保証されます。
-* *検証済みレイヤセット*: `meta-wr-base`などWind Riverが検証したレイヤ群を提供し、産業グレードの品質基準を満たす構成を容易にします。
-* *ツールチェーンとSDK*: 事前構築済みのクロスツールチェーンやアプリケーション開発用SDKを提供し、開発効率を向上させます。
-* *Wind River Professional Services*: BSP開発、規格準拠支援、長期保守に関するプロフェッショナルサービスが利用できます。
-
+== 第1章: エコシステムと全体像
 === Yocto Projectとの関係
-Yocto Projectは、BitBakeビルドツールとレイヤ構造を基盤としたオープンソースのビルドシステムです。Wind River Linuxはこの仕組みを取り込み、独自のディストリビューションレイヤを追加することで商用品質のプラットフォームを提供します。Yocto Projectの標準レシピ(`.bb`ファイル)やレイヤ(`meta-*`)を活用できるため、既存の組み込みLinux知識が学習の土台になります。
+Wind River LinuxはYocto Projectの成果物をベースに独自レイヤとツールチェーンを追加したディストリビューションです。Yocto標準のレシピ(`.bb`ファイル)やレイヤ(`meta-*`)を活用しつつ、Wind River独自の`wrlinux`レイヤが提供されます。
 
-[NOTE]
-====
-Wind River LinuxはYocto Project Compatible製品として認証されています。これはYocto Projectの互換性要件を満たし、同プロジェクトの成果物と協調して動作することを意味します。
-====
+=== 主なコンポーネント
+* *BitBake*: レシピを解釈してパッケージやルートファイルシステムを生成するビルドツール。
+* *Layers*: 機能ごとに分離されたメタデータ集合。`meta-wr-base`や`meta-wr-distro`などWind River特有のレイヤが存在します。
+* *Wind River Workbench*: EclipseベースのIDEで、ターゲットデバッグやビルド管理を支援します。
 
-=== 学習の進め方
-本ドキュメントは今後、以下の流れで章を追加しながら構成していきます。
+== 第2章: 開発環境の準備
+=== ホスト環境
+Wind River Linuxのビルドは64-bit Linuxホスト(Ubuntu、RHELなど)が公式にサポートされています。必要なホストパッケージには`gcc`、`g++`、`make`、`chrpath`、`diffstat`などが含まれます。
 
-. 開発環境の準備
-. ビルドシステムの理解
-. レイヤ構成とカスタマイズ
-. デバッグとプロファイリング
-. BSP(Board Support Package)開発
-. セキュリティとメンテナンス
-. 規格準拠と認証
-. 運用とライフサイクル管理
+=== インストーラとセットアップ
+1. Wind River提供のインストールイメージを取得します(ライセンス契約が必要)。
+2. インストーラを実行し、ワークスペースとレイヤ構成を設定します。
+3. `setenv`スクリプトを利用して環境変数(例: `BBPATH`, `PATH`, `PYTHONPATH`)を初期化します。
 
-各章では、基本概念の解説、設定例、関連ドキュメントの参照先を示し、専門用語には必要に応じて補足を付けます。まずは本序章で得た全体像を基に、次章以降の詳細学習を進めてください。
+== 第3章: ビルドシステム
+=== プロジェクト作成
+Wind River提供の`wrlinux-setup.sh`を用いてビルドプロジェクトを作成します。
+
+[source,shell]
+----
+$ ./wrlinux-setup.sh --machine intel-x86-64 --dist wrlinux-cgl --template feature/cpython3
+----
+
+上記コマンドは、対象マシン`intel-x86-64`向けに通信事業者向けディストリビューション(CGL: Carrier Grade Linux)テンプレートとPython 3サポートを組み合わせた設定の例です。
+
+=== ビルド実行
+`bitbake`コマンドでイメージをビルドします。
+
+[source,shell]
+----
+$ source environment-setup-x86_64-wrlinuxsdk-linux
+$ bitbake wrlinux-image-glibc-std
+----
+
+* *environment-setupスクリプト*: クロスコンパイルに必要なツールチェーンと環境変数を設定します。
+* *`wrlinux-image-glibc-std`*: Wind Riverの標準rootfsイメージターゲット。
+
+== 第4章: レイヤ構成とカスタマイズ
+=== レイヤの役割
+Wind River Linuxでは標準YoctoレイヤとWind River固有レイヤを組み合わせます。`bblayers.conf`で有効化するレイヤを制御し、`local.conf`でマシンやディストリビューションの設定を行います。
+
+=== レシピの拡張
+* *BBAPPEND*: 既存レシピに対する拡張を`.bbappend`ファイルで実施し、パッチ適用や設定変更を行います。
+* *カスタムレシピ*: 新規パッケージを追加する場合は`meta-custom/recipes-example/example.bb`のようにレイヤを分けて管理します。
+
+== 第5章: デバッグとプロファイリング
+=== Wind River Workbench
+Wind River Workbenchはクロスデバッグ、パフォーマンス解析、JTAG連携をサポートします。
+
+* *クロスデバッグ*: GDBリモートプロトコルを利用してターゲットと接続します。
+* *System Viewer*: ターゲット上のスレッドやリソース使用率を可視化します。
+
+=== コマンドラインデバッグ
+* *gdbserver*: ターゲット側で起動し、ホストの`gdb`から接続します。
+* *perf*: Linuxカーネルのパフォーマンス計測ツール。カーネルとユーザ空間のプロファイリングに利用します。
+
+== 第6章: BSP(Board Support Package)
+=== BSPの概要
+BSPは特定ハードウェア向けのブートローダ、カーネル設定、デバイスドライバ、ルートファイルシステム設定をまとめたものです。Wind Riverは多くの商用ボード向けBSPを提供し、顧客専用BSPの開発サービスも行います。
+
+=== カスタムBSP開発
+1. 既存BSPレイヤをコピーして新規レイヤを作成します。
+2. デバイスツリーやカーネル設定(`defconfig`)を調整します。
+3. ブートチェーン(U-BootやUEFI)の設定を見直します。
+
+== 第7章: セキュリティとメンテナンス
+=== セキュリティ対応
+Wind Riverは定期的にCommon Vulnerabilities and Exposures(CVE)に対する修正を提供します。`wrl-secure`テンプレートを利用することで、セキュリティ強化設定(SELinux、Secure Boot連携など)を取り込めます。
+
+=== OTAアップデート
+* *OSTree*: バージョン管理されたファイルシステムツリーを利用した更新メカニズム。
+* *SWUpdate*: OTA(Over-The-Air)更新を管理するためのフレームワークで、堅牢なロールバック機能を提供します。
+
+== 第8章: 規格準拠と認証
+=== Carrier Grade Linux(CGL)
+通信事業者向けの高可用性、フォールトトレランス、セキュリティ要求を定義した認証プログラムです。Wind River LinuxはCGL認証取得を支援する設定テンプレートを提供します。
+
+=== 産業規格
+* *IEC 62304*: 医療機器向けソフトウェアライフサイクル規格。
+* *ISO 26262*: 自動車機能安全規格。安全分析(FMEA、FTA)とソフトウェア開発プロセス統制が求められます。
+
+Wind Riverはこれら規格への準拠を支援するドキュメントや品質管理プロセスを提供します。
+
+== 第9章: 運用とライフサイクル管理
+* *フィールドデプロイ*: Wind River Helix Device Cloudなどの管理サービスと連携し、リモート監視やロギングを実現します。
+* *サポート期間*: 長期サポートオプションにより5年以上のセキュリティアップデートが提供される場合があります。
+
+== 第10章: 追加リソース
+* Wind River公式ドキュメント: ライセンス契約者向けポータルで入手可能。
+* Yocto Project公式ドキュメント: https://docs.yoctoproject.org/
+* OpenEmbedded Layer Index: 追加レイヤ探索に利用できます。
+
+== 付録: 用語集
+[cols="1,3"]
+|===
+|BitBake|Yocto Projectで使用されるビルドツール。レシピを解釈してソース取得、パッチ適用、コンパイル、パッケージングを自動化します。
+|BSP|Board Support Packageの略。特定ハードウェア上でOSを動かすための最小構成。
+|CGL|Carrier Grade Linux。通信キャリアが求める高可用性、セキュリティなどの要件を定めた規格。
+|OSTree|イメージ全体をGitのように管理する差分配信向けツリー構造の仕組み。
+|SELinux|Security-Enhanced Linux。アクセス制御を強化するモジュール。
+|Yocto Project|組み込みLinuxのためのビルドシステムとメタデータの集合。
+|===
