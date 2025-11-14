@@ -1,0 +1,107 @@
+== 第1章: 開発環境の準備
+本章ではWind River Linux(WRL)の開発を開始するためのホスト環境、ツールチェーン、ライセンス取得、および初期セットアップのベストプラクティスを解説します。セットアップ時の典型的な落とし穴と、チームで共有すべきチェックポイントも併記します。
+
+=== ホストシステム要件
+[%autowidth,options="header"]
+|===
+|項目|推奨値|理由・補足
+|CPU|8コア以上のx86_64|BitBakeの並列ビルド(`BB_NUMBER_THREADS`)で効果的に短縮可能
+|RAM|16GB以上(推奨32GB)|`tmp/`配下の中間生成物がメモリにキャッシュされることでI/O待ちを軽減
+|ストレージ|150GB以上の空き容量 (NVMe推奨)|sstateキャッシュやSDK生成で大容量を消費、NVMeは書き込み耐性が高い
+|OS|Ubuntu 20.04/22.04 LTS または RHEL 8.x|Wind Riverがサポート・検証済み。カーネルやglibcの互換性が確保される
+|仮想化|KVM有効化(必要に応じて)|QEMUベースの仮想ターゲット検証を行う場合
+|===
+
+[NOTE]
+====
+*ストレージのパーティション*: WRLのビルドツリーは大量の小ファイルを生成するため、`ext4`に`dir_index`オプションを有効にすると`oe-core`のワークロードで高速化が期待できます。
+====
+
+=== 依存パッケージの導入
+Yocto Projectと同様のパッケージに加え、Wind Riverのサポートツールを利用するためのPythonモジュールを揃えます。
+
+[source,bash]
+----
+# Ubuntu系の例
+sudo apt update
+sudo apt install -y gawk wget git-core diffstat unzip texinfo \
+  gcc build-essential chrpath socat cpio python3 python3-pip \
+  python3-pexpect xz-utils debianutils iputils-ping libsdl1.2-dev \
+  xterm ninja-build
+
+# Wind River CLIユーティリティで必要になる追加ツール
+pip3 install --user west requests rich
+----
+
+[IMPORTANT]
+====
+社内セキュリティポリシーによってはインターネット接続が制限される場合があります。プロキシ設定やオフラインミラーの構築手順を事前に整備し、`~/.wgetrc`や`~/.gitconfig`でプロキシを設定してください。
+====
+
+=== Wind River Customer Portalの活用
+WRLのインストーラやアップデートはWind River Customer Portal経由で提供されます。アカウント発行後に以下を実施します。
+
+. 対象リリースの`wrlinux-installer.sh`と`license.tar`をダウンロード。
+. チーム共有のライセンス管理ストレージへ保管し、アクセス制御を設定。
+. 変更履歴やセキュリティアドバイザリをRSS/メール通知で受け取るよう登録。
+
+[sidebar]
+アカウントに紐づく契約種別によって参照できるナレッジベース記事が異なります。BSPサンプルやリファレンスマニュアルは契約レベルに応じて閲覧権限が分かれるため、プロジェクト開始時に必要資料が参照可能か確認してください。
+
+=== インストーラ実行手順
+インストーラは`--accept-license`でライセンス合意を明示し、プロジェクト用のワークスペースを生成します。
+
+[source,bash]
+----
+mkdir -p ~/wrlinux/installer && cd ~/wrlinux/installer
+chmod +x wrlinux-installer.sh
+./wrlinux-installer.sh --accept-license --target-dir ../wrlinux-23.09
+----
+
+インストール完了後、`wrlinux-23.09/`配下に`layers/`、`templates/`などのディレクトリが展開されます。
+
+=== ワークスペース標準構成
+複数プロジェクトを並行して管理する場合は、以下のように役割ごとにディレクトリを整理すると再現性が高まります。
+
+```
+~/wrlinux/
+  ├── installer/               # インストーラ、ライセンス、署名情報
+  ├── projects/
+  │    ├── base-platform/      # 共通BSPを用いたベースイメージ
+  │    └── product-A/          # 製品A向け派生ビルド
+  ├── shared-sstate/           # sstate cacheをプロジェクト間で共有
+  ├── downloads/               # ソースアーカイブ共有
+  └── docs/                    # ビルドログ、手順書
+```
+
+`shared-sstate`と`downloads`を共有することで、ビルド時間とネットワーク帯域の削減が可能です。`local.conf`で以下を設定します。
+
+[source,bitbake]
+----
+SSTATE_DIR ?= "${TOPDIR}/../shared-sstate"
+DL_DIR ?= "${TOPDIR}/../downloads"
+----
+
+=== SDKとツールチェーン
+WRLは対象アーキテクチャごとに事前構築されたSDKを提供しています。アプリケーション開発者向けに以下の運用を推奨します。
+
+. SDKインストールスクリプト(`wrlinux-<ver>-sdk-<arch>.sh`)を共有ストレージに保管。
+. `--install-dir`で`/opt/windriver/<project>`にインストールし、アクセス権限を開発チームで共有。
+. `environment-setup-<triple>`をラップするシェルスクリプトを作成し、`PATH`と`PKG_CONFIG_PATH`が正しく設定されるようにする。
+
+[source,bash]
+----
+cat <<'WRLSDK' > /opt/windriver/setup-sdk-product-a.sh
+#!/usr/bin/env bash
+source /opt/windriver/wrlinux-23.09/environment-setup-cortexa72-wrs-linux
+echo "[WRL SDK] toolchain activated"
+WRLSDK
+chmod +x /opt/windriver/setup-sdk-product-a.sh
+----
+
+=== チーム内の合意事項チェックリスト
+* [ ] Customer Portalアカウントと契約レベルを確認し、必要資料が閲覧可能である。
+* [ ] ホストOSのバージョンとカーネルがWind Riverサポートマトリクスに合致している。
+* [ ] sstate cacheとダウンロードディレクトリの共有戦略を決定した。
+* [ ] SDK利用手順および環境切り替えスクリプトをチームWikiに掲載した。
+* [ ] ライセンスファイルの保管ポリシーとアクセス権をドキュメント化した。

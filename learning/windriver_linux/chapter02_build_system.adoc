@@ -1,0 +1,111 @@
+== 第2章: ビルドシステムの理解
+WRLはYocto Projectのビルドフレームワークを踏襲しつつ、商用品質を確保するためのテンプレートとツールを追加しています。本章では`wrlinux-setup`によるプロジェクト生成からBitBake実行、メタデータ管理までの一連の流れを詳述します。
+
+=== プロジェクト生成ワークフロー
+`wrlinux-setup`はテンプレートに基づいてプロジェクトディレクトリを初期化し、Wind Riverが提供するレイヤセットを組み込みます。
+
+[source,bash]
+----
+cd ~/wrlinux/wrlinux-23.09
+./wrlinux-setup --machines intel-x86-64 --distros wrlinux --templates feature/secure
+source environment-setup-x86_64-wrlinuxsdk-linux
+source oe-init-build-env ../projects/product-a
+----
+
+[NOTE]
+====
+`--templates`オプションはセキュリティ強化やリアルタイムなどの事前定義機能を追加します。テンプレートの内容は`templates/feature/*`以下に格納されており、`conf`や`local.conf`への追加設定が記述されています。
+====
+
+=== ディレクトリ構造と設定ファイル
+プロジェクトが生成されると、以下の主要ディレクトリが作成されます。
+
+```
+projects/product-a/
+  ├── build/                # BitBakeのワークディレクトリ(TOPDIR)
+  │   ├── conf/
+  │   │   ├── local.conf    # プロジェクト固有設定
+  │   │   ├── bblayers.conf # 有効化レイヤ一覧
+  │   │   └── templateconf.cfg # template適用履歴
+  │   └── tmp/              # ビルド成果物
+  ├── layers/               # カスタムレイヤ配置先
+  └── scripts/              # 補助スクリプト
+```
+
+主要設定ファイルの役割は以下のとおりです。
+
+[%autowidth,options="header"]
+|===
+|ファイル|役割|更新頻度|メモ
+|`conf/local.conf`|MACHINE、DISTRO、追加変数の設定|開発初期と機能追加時|`EXTRA_IMAGE_FEATURES`などを機能単位で管理
+|`conf/bblayers.conf`|レイヤのパスと優先順位|レイヤ追加時|`BBLAYERS_NON_REMOVABLE`で必須レイヤを固定
+|`conf/templateconf.cfg`|適用済みテンプレートの記録|初期化時|テンプレート差分の追跡に利用
+|===
+
+=== BitBakeジョブの最適化
+ビルド時間短縮のため、以下のパラメータ調整が推奨されます。
+
+[source,bitbake]
+----
+# conf/local.conf
+BB_NUMBER_THREADS ?= "${@oe.utils.cpu_count()}"
+PARALLEL_MAKE ?= "-j ${@oe.utils.cpu_count()}"
+INHERIT += "rm_work"
+TMPDIR ?= "${TOPDIR}/tmp"
+----
+
+`INHERIT += "rm_work"`はパッケージ生成後にワークディレクトリを削除し、ディスク使用量を抑制します。ただしデバッグ時には無効化し、ソースを再確認できるようにします。
+
+=== レイヤと優先順位
+WRLにはWind River提供の基盤レイヤが含まれます。
+
+[%autowidth,options="header"]
+|===
+|レイヤ|内容|備考
+|`meta-wrlinux`|ディストロ設定、共通クラス、ポリシー|WRLの中心レイヤ
+|`meta-clang`|Clang/LLVMツールチェーン統合|新規C++機能利用時に有効
+|`meta-selinux`|SELinuxポリシーとツール|セキュリティテンプレートで自動追加
+|`meta-virtualization`|KVM/Dockerなど仮想化スタック|エッジクラウド用途
+|`meta-cgl`|通信キャリアグレードLinux要求|高可用性向け
+|===
+
+レイヤ優先順位は`BBFILE_PRIORITY`で制御します。社内レイヤが上位となるよう設定し、Wind River提供レシピを上書きする場合は`FILESEXTRAPATHS`でディレクトリを追記します。
+
+[source,bitbake]
+----
+BBFILE_PRIORITY_meta-corp = "90"
+BBFILE_PRIORITY_meta-wrlinux = "70"
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+----
+
+=== 共通的なBitBakeターゲット
+WRL固有のターゲットと標準Yoctoターゲットを併用します。
+
+[%autowidth,options="header"]
+|===
+|ターゲット|用途|出力
+|`bitbake wrlinux-image-glibc-std`|標準GLIBCイメージ|`tmp/deploy/images/<machine>/`にrootfsとカーネル
+|`bitbake wrlinux-image-rt`|PREEMPT_RTカーネルを含むリアルタイムイメージ|`vmlinuz`と`bzImage`など
+|`bitbake meta-toolchain`|クロスツールチェーン生成|`tmp/deploy/sdk/`にSDKインストーラ
+|`bitbake -c populate_sdk <image>`|対象イメージ向けSDK生成|アプリ開発者配布用
+|`bitbake -c menuconfig virtual/kernel`|カーネル設定編集|BSP章で活用
+|===
+
+=== ビルド成果物の検証
+ビルド後は`tmp/deploy/images/`配下の成果物をチェックします。
+
+[source,bash]
+----
+ls tmp/deploy/images/intel-x86-64/
+# bzImage  core-image-minimal-intel-x86-64.ext4  modules-intel-x86-64.tgz  ...
+----
+
+`manifest`ファイルにはレシピのバージョンとチェックサムが一覧化されており、再現性確認に利用します。また、Wind Riverは`wrl-verify`スクリプトを提供しており、イメージ構成がテンプレート要件を満たしているかを検証できます。
+
+=== トラブルシューティングのポイント
+* `ERROR: Fetcher failure`が発生した場合、Customer Portalのオフラインミラー設定が正しく適用されているか確認します。
+* `sstate`の互換性エラーが出た際は`TMPDIR`, `SSTATE_DIR`が異なるバージョンを混在させていないかをチェックします。
+* `bitbake -e <recipe>`で環境変数を展開し、Wind River固有クラス(`wrlinux.bbclass`)の影響を調査します。
+
+=== まとめ
+WRLのビルドシステムはYocto Projectと互換性が高く、既存のBitBake知識を活かせます。Wind Riverが提供するテンプレートとレイヤを適切に組み込むことで、初期構築に要する時間を短縮しつつ品質要件に適合したプラットフォームを得られます。

@@ -1,0 +1,91 @@
+== 第5章: BSP(Board Support Package)開発
+BSPは特定ハードウェア向けにブートローダ、カーネル、デバイスドライバ、デバイスツリーを統合したパッケージです。本章ではWRLでのBSP拡張手順と品質確保のポイントを説明します。
+
+=== BSPの構成要素
+[%autowidth,options="header"]
+|===
+|要素|役割|WRLでの典型例
+|ブートローダ|ハードウェア初期化とOS起動。U-BootやUEFI|`meta-intel`や`meta-ti`で提供されるパッチをベースにカスタム
+|カーネル|ハードウェアドライバとシステムコール|`linux-windriver`レシピを`bbappend`して設定
+|デバイスツリー(DTB)|ハードウェア構成の宣言|`meta-company-base/recipes-kernel/linux/linux-windriver/<machine>/`
+|ファームウェア|周辺機器制御|`recipes-bsp/firmware/`に配置し、ライセンス情報を明記
+|===
+
+=== カスタムマシン定義
+新しいターゲットを追加する際は`conf/machine/<machine>.conf`を作成します。
+
+[source,bitbake]
+----
+# meta-company-base/conf/machine/productb.conf
+require conf/machine/include/arm/armv8/tune-cortexa72.inc
+MACHINE_FEATURES += "wifi bluetooth emmc"
+KERNEL_IMAGETYPE = "Image.gz"
+UBOOT_MACHINE = "productb_defconfig"
+SERIAL_CONSOLES ?= "115200;ttyAMA0"
+----
+
+[NOTE]
+====
+`KERNEL_IMAGETYPE`や`UBOOT_MACHINE`はハードウェアチームとの合意に基づいて設定します。クロック設定やブートメディア(SD, eMMC)の違いが反映されているか確認してください。
+====
+
+=== カーネルカスタマイズ
+`linux-windriver`レシピを上書きし、パッチと設定を追加します。
+
+[source,bitbake]
+----
+# meta-company-base/recipes-kernel/linux/linux-windriver_%bbappend
+FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
+SRC_URI += "file://0001-productb-add-spi-driver.patch"
+
+SRC_URI:append:productb = " \
+    file://defconfig \
+    file://productb.dtsi \
+"
+
+do_configure:append:productb() {
+    install -m 0644 ${WORKDIR}/productb.dtsi ${S}/arch/arm64/boot/dts/
+}
+----
+
+`do_configure:append`でデバイスツリーを配置し、`defconfig`をカスタムに差し替えます。パッチは`git format-patch`形式で作成し、コミットメッセージに原因と対処を明記します。
+
+=== ドライバ開発の流れ
+1. ハードウェア仕様書からレジスタマップを整理。
+2. `drivers/`配下の既存ドライバを参考に実装。必要に応じて`driver-model`のAPIを利用。
+3. `menuconfig`でモジュールとしてビルド可能に設定し、`bitbake linux-windriver -c compile`で単体ビルド。
+4. ターゲット上で`modprobe`し、`dmesg`で初期化ログを確認。
+5. `udev`ルールや`systemd`サービスで自動ロードを設定。
+
+=== ブートローダの調整
+U-Bootを例に、以下のファイルを修正します。
+
+* `include/configs/productb.h`: メモリマップ、環境変数の初期値。
+* `board/company/productb/`: ボード初期化コード。
+* `configs/productb_defconfig`: コンパイル時オプション。
+
+WRLでは`meta-windriver-bsp`が提供するU-Bootテンプレートを利用できます。`bitbake u-boot-windriver`でビルドし、`deploy`ディレクトリに`u-boot.bin`が生成されます。
+
+=== ハードウェア抽象化とテスト
+* *自動テスト*: `ptest`や`LAVA`によるブートテストをCIに組み込みます。
+* *ドライバ検証*: `i2cdetect`, `spi-config`, `lsusb`などバス診断ツールで接続確認。
+* *レグレッション*: Wind Riverの`Hardware Support Package(HSP)`更新時に互換性テストを実施。
+
+=== BSPリリース管理
+BSPはアプリケーションリリースと異なるライフサイクルで管理します。
+
+[%autowidth,options="header"]
+|===
+|段階|成果物|レビューポイント
+|開発|試験用イメージ、テストレポート|機能追加の妥当性、コード規約遵守
+|統合|CIビルド済みイメージ、既知問題リスト|他チームとのインタフェース確認
+|リリース|署名済みイメージ、ドキュメント|セキュリティ評価、ライセンス明示
+|保守|CVE対応パッチ、フィールド修正|影響範囲分析、回帰テスト結果
+|===
+
+=== チェックリスト
+* [ ] `conf/machine`の定義がハードウェア仕様と一致している。
+* [ ] カーネルパッチが上流へ送付可能な形で整理されている。
+* [ ] ブートローダの環境変数にセキュリティ要件(セキュアブート等)が反映されている。
+* [ ] ハードウェアテスト手順が自動化され、CIで定期実行されている。
+* [ ] BSPリリースノートに既知の制約事項が明記されている。
