@@ -1,0 +1,337 @@
+= Wind River Linux 学習ドキュメント
+:toc:
+:toclevels: 2
+
+== 序章: 学習の目的と全体像
+Wind River LinuxはWind River Systemsが提供する商用組み込みLinuxディストリビューションで、Yocto Projectをベースに産業用途で求められる長期保守やサポート体制を備えています。本ドキュメントは、業務でWind River Linuxを扱うエンジニアが効率的に学習を進めるためのガイドです。まずはWind River Linuxの背景と、今後学ぶべきトピックの位置付けを整理します。
+
+=== 想定読者
+* 組み込みLinuxの基礎知識(クロスコンパイル、ルートファイルシステムの構造など)を有し、Wind River Linuxに初めて触れるエンジニア。
+* 既にYocto ProjectやBitBakeを扱った経験があり、Wind River特有の拡張や商用サポートの活用方法を理解したい担当者。
+
+=== 学習目標
+* Wind River Linuxが採用される背景と製品ポートフォリオを把握する。
+* Yocto Projectとの関係、Wind River独自のレイヤやツールチェーンの役割を理解する。
+* 今後取り扱う各章(環境構築、ビルド、カスタマイズ、BSP、セキュリティ、ライフサイクル管理など)の学習順序を明確にする。
+
+=== Wind River Linuxの位置付け
+Wind River Linuxは、標準的なYocto Projectベースディストリビューションに対し以下のような付加価値を提供します。
+
+* *長期サポート(LTS)*: Wind Riverが提供する商用サポート契約により、長期にわたるバグ修正・CVE対応が保証されます。
+* *検証済みレイヤセット*: `meta-wr-base`などWind Riverが検証したレイヤ群を提供し、産業グレードの品質基準を満たす構成を容易にします。
+* *ツールチェーンとSDK*: 事前構築済みのクロスツールチェーンやアプリケーション開発用SDKを提供し、開発効率を向上させます。
+* *Wind River Professional Services*: BSP開発、規格準拠支援、長期保守に関するプロフェッショナルサービスが利用できます。
+
+=== Yocto Projectとの関係
+Yocto Projectは、BitBakeビルドツールとレイヤ構造を基盤としたオープンソースのビルドシステムです。Wind River Linuxはこの仕組みを取り込み、独自のディストリビューションレイヤを追加することで商用品質のプラットフォームを提供します。Yocto Projectの標準レシピ(`.bb`ファイル)やレイヤ(`meta-*`)を活用できるため、既存の組み込みLinux知識が学習の土台になります。
+
+[NOTE]
+====
+Wind River LinuxはYocto Project Compatible製品として認証されています。これはYocto Projectの互換性要件を満たし、同プロジェクトの成果物と協調して動作することを意味します。
+====
+
+=== 学習の進め方
+本ドキュメントは今後、以下の流れで章を追加しながら構成していきます。
+
+. 開発環境の準備
+. ビルドシステムの理解
+. レイヤ構成とカスタマイズ
+. デバッグとプロファイリング
+. BSP(Board Support Package)開発
+. セキュリティとメンテナンス
+. 規格準拠と認証
+. 運用とライフサイクル管理
+
+各章では、基本概念の解説、設定例、関連ドキュメントの参照先を示し、専門用語には必要に応じて補足を付けます。まずは本序章で得た全体像を基に、次章以降の詳細学習を進めてください。
+== 第1章: 開発環境の準備
+本章ではWind River Linux(WRL)の開発に必要なハードウェア・ソフトウェア要件と、初期セットアップ手順を説明します。前提となる組み込みLinux知識を確認しながら、効率的な学習環境を構築しましょう。
+
+=== 必要ハードウェア
+* *開発ホスト*: 64ビットのx86_64アーキテクチャを備えたワークステーション。推奨メモリは16GB以上、ディスク空き容量は150GB以上。ビルドプロセスは大容量の一時ファイルを生成するためです。
+* *ターゲットボード*: Wind Riverから提供される評価ボード、もしくは社内で採用するBSP(Board Support Package)が用意されたプラットフォーム。シリアルコンソールとネットワークインタフェースが必要です。
+* *ネットワーク接続*: ライセンス認証やパッケージ取得のために安定したインターネット接続があると望ましい。
+
+=== 必要ソフトウェア
+* *ホストOS*: Wind Riverが検証したUbuntu LTSまたはRed Hat Enterprise Linux互換ディストリビューション。Wind River Linux 23以降ではUbuntu 20.04/22.04、RHEL 8が一般的です。
+* *依存パッケージ*: `git`, `tar`, `python3`, `chrpath`, `diffstat`, `xz-utils`, `ninja-build`などYocto Projectと同等のビルド依存パッケージをインストールします。Wind Riverのリリースノートに列挙される必須パッケージリストに従ってください。
+* *ライセンスファイル*: Wind River Customer Portalから取得できるWRLのインストーラとライセンスを事前に準備しておきます。
+
+=== アカウントとポータル
+Wind River Customer Portalは製品ダウンロード、ナレッジベース、ケース管理を行う公式サイトです。会社契約に紐づくアカウントを取得し、以下を実施します。
+
+. Customer Portalから対象リリースの`wrlinux-installer.sh`をダウンロード。
+. `chmod +x wrlinux-installer.sh`で実行権限を付与。
+. ローカルの作業ディレクトリ(例: `~/wrlinux`)を作成し、インストーラを実行。
+
+[source,bash]
+----
+$ mkdir -p ~/wrlinux && cd ~/wrlinux
+$ ./wrlinux-installer.sh --accept-license
+----
+
+[NOTE]
+====
+`--accept-license`オプションはライセンス条項に同意した後に使用します。社内規程に従い、法務確認が完了していることを確認してください。
+====
+
+=== SDK・ツールチェーンのインストール
+Wind River Linuxはビルド出力としてクロスコンパイラSDKを生成できますが、Wind Riverが提供する事前構築済みSDKを利用すると初期開発が迅速になります。
+
+. ポータルから対象ボード向けの`wrlinux-<version>-sdk.sh`を取得。
+. 開発者のホームディレクトリで実行し、インストールパス(例: `/opt/windriver/wrlinux-<version>`)を指定。
+. `environment-setup-<triple>`スクリプトを`source`してクロスコンパイル環境を有効化。
+
+[source,bash]
+----
+$ /opt/windriver/wrlinux-<version>/environment-setup-cortexa72-wrs-linux
+----
+
+[NOTE]
+====
+`<triple>`は対象アーキテクチャとABIを表します。例: `x86_64-wrs-linux`, `aarch64-wrs-linux`。BSP付属ドキュメントを参照して正確な値を確認してください。
+====
+
+=== バージョン管理とワークスペース
+Wind River Linuxのビルド環境はYocto Project同様、BitBakeのレイヤ構造をとります。以下のディレクトリ構成を推奨します。
+
+```
+~/wrlinux/
+  ├── installer/           # インストーラ格納場所
+  ├── builds/              # ビルドディレクトリ複数を管理
+  ├── layers/              # 社内独自レイヤ
+  └── docs/                # 設定メモやログ
+```
+
+`git`でレイヤを管理し、変更点を社内リポジトリへコミットできるようにしておきます。
+
+=== 確認チェックリスト
+* [ ] Customer Portalへのアクセス権を取得した。
+* [ ] 必須パッケージがインストール済みである。
+* [ ] インストーラを実行し、ベースとなるWRLツリーを展開した。
+* [ ] SDKまたはクロスコンパイラをインストールした。
+* [ ] ターゲットボードとホスト間の接続手段(シリアル・ネットワーク)を確認した。
+
+== 第2章: ビルドシステムの理解
+本章ではYocto Projectと共通する概念に加えて、Wind River独自のビルドフローや支援ツールを整理します。BitBake、レイヤ構造、`wrlinux-setup`ユーティリティの役割を理解しましょう。
+
+=== Wind Riverのビルドワークフロー
+Wind River LinuxはYocto Projectのレシピ(`.bb`)、レイヤ(`meta-*`)を使用しつつ、`wrlinux-setup`スクリプトでプロジェクトを生成します。
+
+. インストーラが展開されたディレクトリで`wrlinux-setup`を実行し、プロジェクト(ビルドディレクトリ)を作成。
+. 生成された`builds/<project>`ディレクトリで`bitbake`コマンドを用いてイメージやパッケージをビルド。
+. ビルド成果物(ルートファイルシステム、ブートローダ、SDK)をターゲット向けに展開。
+
+[source,bash]
+----
+$ cd ~/wrlinux/wrlinux-x
+$ ./wrlinux-setup.sh --template feature/secure --machine intel-x86-64 --dl-layers && cd builds/intel-x86-64
+$ source environment-setup
+$ bitbake wrlinux-image-glibc-std
+----
+
+[NOTE]
+====
+`--template`はWind Riverが提供する機能セットを選択するオプションです。`feature/secure`や`feature/kvm`など複数のテンプレートがあり、組み合わせて使用します。利用可能なテンプレートは`./wrlinux-setup.sh --list-templates`で確認できます。
+====
+
+=== BitBakeとターゲット
+Wind Riverが提供する代表的なイメージターゲットは以下です。
+
+* `wrlinux-image-glibc-std`: 一般的な組み込み用途向けの標準イメージ。
+* `wrlinux-image-glibc-sato`: SATO(UI)環境を含むデスクトップ検証用イメージ。
+* `wrlinux-image-std-srm`: セキュア実行環境(SRM: Security Runtime Manager)を含む構成。
+
+ターゲット名はリリースによって変更される場合があるため、`conf/distro/wrlinux*.conf`内の`IMAGE_FSTYPES`や`IMAGE_CLASSES`を確認してください。
+
+=== ダウンロードミラーと共有キャッシュ
+WRLビルドは大量のソースダウンロードを伴います。社内で共通のダウンロードディレクトリを設定することでビルド時間を短縮できます。
+
+[source,bash]
+----
+$ echo 'DL_DIR = "/mnt/shared/wrlinux/downloads"' >> conf/site.conf
+$ echo 'SSTATE_DIR = "/mnt/shared/wrlinux/sstate-cache"' >> conf/site.conf
+----
+
+`DL_DIR`はソースアーカイブのダウンロード先、`SSTATE_DIR`はビルド済みタスクのキャッシュです。ネットワーク共有を用いる場合はアクセス権と容量を確認してください。
+
+=== ビルドトラブルシューティング
+* *ライセンスエラー*: `No valid license found`はインストーラでライセンス登録が完了していない場合に発生します。`wrl-check-license`で状態を確認します。
+* *依存パッケージ不足*: `Command not found`などのエラーはホストパッケージが不足しているサインです。リリースノートの依存リストを見直してください。
+* *SSTATE破損*: キャッシュの整合性が崩れた場合、該当パッケージのディレクトリを削除して再ビルドすると解消することがあります。
+
+== 第3章: レイヤ構成とカスタマイズ
+本章ではレイヤ構造の把握と、カスタムレイヤを利用した機能追加・設定変更の手順を説明します。
+
+=== 主要レイヤの役割
+* `meta-wrlinux`: Wind Riverのディストリビューション設定を定義するメインレイヤ。
+* `meta-wr-base`: コアパッケージとサービスを提供。
+* `meta-oe`/`meta-openembedded`: コミュニティ提供の追加パッケージ群。
+* `meta-<board>`: BSP固有の設定・ドライバを含むボードレイヤ。
+
+`bitbake-layers show-layers`で現在有効なレイヤ一覧と優先度(PRIORITY)を確認できます。
+
+=== カスタムレイヤ作成
+社内専用の設定やアプリケーションを管理するために`meta-company`のようなカスタムレイヤを作成します。
+
+[source,bash]
+----
+$ bitbake-layers create-layer ../layers/meta-company
+$ bitbake-layers add-layer ../layers/meta-company
+----
+
+`conf/layer.conf`でBBFILE_COLLECTIONSやBBFILE_PATTERNを調整し、レイヤ固有のメタデータを定義します。
+
+=== レシピ追加とbbappend
+* *新規レシピ*: `recipes-example/helloworld/helloworld.bb`のように、`SRC_URI`や`inherit cmake`といった記述でソース取得・ビルド方法を定義。
+* *既存レシピ拡張*: `.bbappend`ファイルを用いて、既存レシピにパッチや設定追加を適用。
+
+[source,bitbake]
+----
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+SRC_URI += "file://myconfig.cfg"
+----
+
+[IMPORTANT]
+====
+`.bbappend`のファイル名は対象レシピと同じにする必要があります。例: `busybox_%.bbappend`。
+====
+
+=== Distro設定とイメージカスタマイズ
+`conf/distro/<distro>.conf`でパッケージマネージャ(`rpm`/`ipk`)や`DISTRO_FEATURES`を定義します。イメージに追加したいパッケージは`IMAGE_INSTALL:append = " package"`のように指定します。
+
+=== ビルド時間短縮の工夫
+* `BB_NUMBER_THREADS`と`PARALLEL_MAKE`をホストCPUコア数に応じて調整。
+* `INHERIT += "rm_work"`で不要なワークディレクトリを削除(ディスク節約)。
+* `INHERIT += "buildstats"`でビルド時間の統計を取得し、ボトルネック分析に活用。
+
+== 第4章: デバッグとプロファイリング
+Wind River Linuxはデバッグ支援ツールが充実しており、開発効率を高めるための機能が提供されています。
+
+=== ターゲット接続
+* *シリアルコンソール*: `minicom`や`screen`でコンソールアクセス。ボーレートはBSPドキュメントの既定値(例: 115200bps)を使用。
+* *ネットワーク*: `ssh`でターゲットに接続。Wind RiverはOpenSSHを標準で提供します。
+
+=== Wind River Simics
+仮想プラットフォームSimicsを使用するとハードウェアが手元にない段階でもソフトウェア開発が可能です。WRLと組み合わせる場合、Simics専用のボードパッケージをロードし、仮想ターゲット上でイメージを起動します。
+
+=== 代表的なデバッグツール
+* `wrdbg`: Wind Riverが提供するデバッグ環境。EclipseベースのIDEでブレークポイント制御、メモリ解析が可能。
+* `gdbserver`: ターゲット側で`gdbserver :2345 /usr/bin/app`を実行し、ホストから`aarch64-wrs-linux-gdb`で接続。
+* `perf`/`LTTng`: カーネル・ユーザー空間のプロファイリング。パッケージをイメージに含め、`perf record`, `lttng`コマンドで解析。
+
+=== ログ収集と解析
+Wind River Linuxは`rsyslog`や`journald`を利用できます。`journalctl -k`でカーネルログ、`journalctl -u <service>`でサービス単位のログを確認し、再現性のある手順を整理してください。
+
+=== 解析レポートの作成
+バグ報告時には以下の情報を添付します。
+
+* ソフトウェアバージョン(`wrlinux-version`コマンドで取得)。
+* ターゲットハードウェア名とBSPリビジョン。
+* 再現手順、期待結果、実際の結果。
+* 関連するログファイル(シリアルログ、`/var/log/messages`など)。
+
+== 第5章: BSP(Board Support Package)開発
+本章ではハードウェア固有の設定を含むBSPの構造と拡張方法を説明します。
+
+=== BSPの構成要素
+* *ブートローダ*: U-BootやUEFIの設定。
+* *カーネル*: `meta-wr-kernel`レイヤで管理され、カスタム設定は`defconfig`や`fragment`で行う。
+* *デバイスツリー*: `*.dts`ファイルでハードウェア資源を定義。
+* *ファームウェア*: マイクロコードやデバイス固有のバイナリ。
+
+=== カーネル設定の拡張
+`meta-<board>/recipes-kernel/linux/linux-<board>.bbappend`でカーネル設定断片を追加し、`SRC_URI += "file://fragment.cfg"`のように指定します。`menuconfig`を用いて設定を調整し、`defconfig`に反映します。
+
+[source,bash]
+----
+$ bitbake virtual/kernel -c menuconfig
+$ bitbake virtual/kernel -c savedefconfig
+----
+
+=== デバイスツリーの更新
+`arch/<arch>/boot/dts/`配下の`dts`/`dtsi`ファイルを編集し、新規デバイスノードやGPIO設定を追加します。ビルド後に`build/tmp/deploy/images/<machine>/`に生成される`.dtb`をターゲットのブートローダ設定で指定します。
+
+=== ドライバの追加
+社内開発ドライバは`recipes-kernel/linux/linux-<board>/files/`にパッチとして追加し、`SRC_URI += "file://driver.patch"`で適用。ライセンス表記とアップストリームへの取り込み方針を明記します。
+
+=== ハードウェアテスト
+BSP更新後は以下の観点でテストを行います。
+
+* ブート検証(U-Bootログ、カーネル起動)。
+* デバイス認識(`dmesg`, `/sys/bus/...`).
+* I/O動作確認(ネットワーク、ストレージ、GPIO等)。
+* 電源管理(サスペンド/レジューム)。
+
+== 第6章: セキュリティとメンテナンス
+Wind River Linuxは産業用途向けにセキュリティ機能と長期保守を提供します。本章では主要機能と運用ポイントを整理します。
+
+=== セキュリティテンプレート
+`wrlinux-setup`のテンプレートにはSecure Boot、Measured Boot、SELinux等を有効化する設定が含まれます。
+
+* `feature/secure`: FIPS準拠ライブラリ、暗号サービス、セキュアブート支援を提供。
+* `feature/ima`: Integrity Measurement Architecture(IMA)を有効化。
+* `feature/smack`: SMACKアクセス制御。
+
+テンプレートの詳細はWind River Security Manualを参照し、プロジェクト要件と照らして選択します。
+
+=== パッチ管理
+Wind Riverは定期的にSecurity Notice(SN)を公開し、CVE対応パッチを提供します。運用手順の例:
+
+. Customer Portalで最新のSNとパッチセットを確認。
+. 対象する`srcrev`またはパッチをレイヤに取り込み。
+. 回帰テストを実施し、変更の影響を評価。
+
+=== セキュリティスキャナの利用
+ビルド成果物に対して`cve-check`クラスを有効化し、`bitbake <image> -c cve_check`で既知の脆弱性を確認できます。社内ポリシーに従い、外部スキャナ(例: Black Duck)を併用するケースもあります。
+
+=== ランタイムハードニング
+* *Secure Boot*: UEFI Secure BootやU-Boot SPLのサイン機能を活用。
+* *ファイルシステム暗号化*: `dm-crypt`や`fscrypt`を利用。
+* *アクセス制御*: SELinux/SMACKポリシーを調整し、最小権限原則を徹底。
+
+=== 運用中の更新
+OTA(Over-the-Air)更新には`swupdate`やWind River Edge Syncなどの仕組みを利用できます。二重パーティション戦略(A/Bアップデート)を採用し、更新失敗時のロールバック手段を確保します。
+
+== 第7章: 規格準拠と認証
+産業用途では各種規格・認証への対応が必須となります。本章では代表的な規格とWRLの支援策をまとめます。
+
+=== 代表的な規格
+* *安全規格*: IEC 61508、ISO 26262、自動車向けのASIL。
+* *セキュリティ規格*: IEC 62443、Common Criteria。
+* *航空宇宙*: DO-178C(ソフトウェア)、DO-254(ハードウェア)。
+
+=== Wind Riverの提供資料
+Wind Riverは規格準拠支援のためのEvidence Package(証跡セット)やSafety Manualを提供する場合があります。契約内容に応じて入手し、設計プロセスに組み込んでください。
+
+=== 開発プロセスとの整合
+* 要件追跡: PolarionなどのALMツールと連携し、要件からテストまでトレーサビリティを確保。
+* ソフトウェア構成管理: レイヤとレシピのバージョン管理を徹底。
+* ドキュメント管理: 設計書・テスト仕様書を最新状態に保ち、監査対応をスムーズにする。
+
+== 第8章: 運用とライフサイクル管理
+Wind River Linuxシステムを長期運用するためのプロセス、サポート活用方法、監視・保守のポイントを解説します。
+
+=== ライフサイクル方針
+* *導入*: 初期導入時にサポート契約(Support & Maintenance)を確認し、サービスレベルに応じた問い合わせ窓口を設定。
+* *運用*: 定期的なアップデート適用、脆弱性対応、ログ監視を継続。
+* *廃止*: エンドオブライフ(EOL)時期を把握し、後継バージョンへの移行計画を策定。
+
+=== サポートケースの活用
+Wind Riverサポートに問い合わせる際は、以下を整理しておくと対応が迅速化します。
+
+* 問題概要と緊急度。
+* ビルドID(`bitbake-getvar BUILDNAME`で取得)。
+* 関連するログ、コアダンプ、設定ファイル。
+
+=== ログとメトリクス
+* *systemd journal*: `journalctl --since "-1h"`で直近1時間のログ確認。
+* *リソース監視*: `top`, `iostat`, `sar`など標準ツールに加え、Wind River提供の`wr-sysmon`を利用するケースもあります。
+* *遠隔監視*: Wind River StudioやEdge Syncを利用するとクラウド上で資産管理とアップデート配信が可能。
+
+=== 長期保守のベストプラクティス
+* 変更管理: ビルド構成とソフトウェアのリビルド手順を文書化。
+* バックアップ: 重要な`conf/local.conf`, `site.conf`, `bblayers.conf`をバージョン管理し、再現性を確保。
+* トレーニング: 社内メンバーへの教育プログラムを整備し、ノウハウの属人化を避ける。
+
+== まとめ
+本ドキュメントではWind River Linuxを業務で扱う際に必要となる基礎から応用までの学習ルートを提示しました。序章で全体像を把握し、第1章〜第8章で具体的な知識と手順を学習することで、WRLを用いた組み込みシステム開発・運用に自信を持って臨むことができます。各章で示した参考資料や社内ポリシーを参照しつつ、自身のプロジェクト要件に合わせて内容を発展させてください。
