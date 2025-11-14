@@ -1,0 +1,120 @@
+== 第6章: セキュリティとメンテナンス
+産業用途でWRLを運用する際、セキュリティ対策と継続的なメンテナンスは不可欠です。本章では脆弱性管理、SBOM生成、ランタイム防御、アップデート戦略を整理します。
+
+=== セキュリティポリシーの整備
+* *脅威モデル*: 攻撃ベクトル(物理アクセス、リモート侵入、サプライチェーン)を特定し、優先順位を付ける。
+* *アクセス制御*: `DISTRO_FEATURES`で`pam`, `audit`を有効化し、`meta-selinux`レイヤで強制アクセス制御を導入。
+* *ログ監査*: `auditd`を有効化し、セキュリティイベントを中央サーバへ送信。
+
+[source,bitbake]
+----
+DISTRO_FEATURES:append = " pam audit"
+IMAGE_INSTALL:append = " auditd"
+----
+
+=== 脆弱性管理
+Wind RiverはCVEパッチを提供するセキュリティ通知を配信します。対応フローの例を示します。
+
+1. セキュリティチームが`WRL Security Advisory`を受信し、影響範囲を評価。
+2. `bitbake-layers show-overlayed`で該当レシピが社内レイヤで上書きされていないか確認。
+3. `git cherry-pick`でWind Riverが提供する修正を適用し、`bitbake <recipe> -c do_patch -f`で再適用。
+4. 自動テストと脆弱性スキャナ(OpenSCAPなど)で検証し、本番適用の判断を行う。
+
+[IMPORTANT]
+====
+CVE対応はイメージ全体の再ビルドとテストが前提です。個別パッケージの差し替えのみで本番適用すると依存関係の整合性が崩れる恐れがあります。
+====
+
+=== SBOM(ソフトウェア部品表)生成
+WRL 23以降では`wrl-sbom`ツールが提供され、SPDX形式のSBOMを生成できます。
+
+[source,bash]
+----
+bitbake wrlinux-image-glibc-std -c wrl-sbom
+ls tmp/deploy/sbom/
+# wrlinux-image-glibc-std-intel-x86-64.spdx.json
+----
+
+SBOMは以下の用途に活用します。
+
+* セキュリティスキャナとの連携。
+* 顧客向けに提供する法的文書(License disclosure)の作成。
+* 規格準拠(ISO/SAE 21434など)で要求されるソフトウェア構成証跡。
+
+=== ランタイム防御
+* *Secure Boot*: UEFI Secure BootやU-Bootの`FIT`イメージ署名を有効化し、署名鍵の保護手順を定義。
+* *TLS資産管理*: `oscrypto`, `openssl`の証明書更新を自動化し、CRL/OCSPの監視を行う。
+* *ファイル整合性*: `ima`/`evm`を活用し、重要ファイルの改ざん検知を設定。
+
+[source,bitbake]
+----
+DISTRO_FEATURES:append = " ima"
+IMAGE_INSTALL:append = " ima-evm-tools"
+----
+
+=== アップデート戦略
+WRLは複数のアップデートメカニズムをサポートします。
+
+[%autowidth,options="header"]
+|===
+|方式|概要|適用シナリオ|注意点
+|パッケージ更新(`rpm`)|個別パッケージを差分更新|開発段階、軽微な修正|依存解決とリブート要否を明確に
+|A/Bアップデート(`swupdate`, `mender`)|2つのパーティションを切り替え|フィールドでのロールバック重視|ストレージ容量確保、署名検証
+|コンテナ更新|アプリケーションをコンテナで提供|クラウド連携型エッジ装置|ホストOSとカーネルの互換性を維持
+|===
+
+[NOTE]
+====
+Wind Riverは`OSTree`ベースの更新機構も提供しており、大規模デプロイに適した差分配信を実現します。社内のデプロイメント基盤と整合性を確認してください。
+====
+
+=== 運用監視
+* *ログ転送*: `rsyslog`/`journald`でセキュリティイベントをSIEMへ送信。
+* *脆弱性スキャン*: OpenSCAP、ClamAVなどを定期実行。
+* *キー管理*: TPMやHSMを活用し、署名鍵を安全に保管。
+
+=== チェックリスト
+* [ ] セキュリティポリシーと脅威モデルが文書化されている。
+* [ ] CVE対応フローと役割分担が明確になっている。
+* [ ] SBOM生成手順と成果物の保管場所が定義されている。
+* [ ] Secure Bootやファイル整合性チェックの設定がテストされている。
+* [ ] アップデート方式ごとのリスク評価が完了している。
+
+=== 追加で検討すべきセキュリティ施策
+
+==== ゼロトラスト志向のアクセス制御
+遠隔保守やクラウド連携が前提となるケースでは、VPN頼みではなくゼロトラストモデルを採用します。WRL上で実現する場合、以下を検討します。
+
+* `WireGuard`や`strongSwan`を利用したアイデンティティベースの通信。
+* `fwupd`やTPMを用いたデバイス認証、証明書の自動ローテーション。
+* `sudo`ポリシーを細分化し、`sudoers.d/`でメンテナンス作業のみ許可。
+
+==== セキュリティイベントの自動相関
+SIEM(Splunk、Elastic Securityなど)と連携する際は、`journalbeat`や`rsyslog omkafka`を利用し、CVE対応状況とログイベントを突き合わせます。Wind Riverが提供する`Security Profile`テンプレートは、`auditd`と`AIDE`を組み合わせた差分検知を標準化しており、発生したイベントを自動でインシデント管理ツール(Jira, ServiceNow)へ連携する仕組みを構築すると対応が迅速になります。
+
+==== カーネルハードニング
+WRLカーネルは既に多くのハードニングオプションを備えていますが、プロジェクト要件に応じて追加オプションを検討します。
+
+[source,bitbake]
+----
+KERNEL_FEATURES:append = " features/security/lockdown.scc"
+KERNEL_CONFIG_FRAGMENTS:append = " ${THISDIR}/cfg/stackprotector.cfg"
+----
+
+`stackprotector.cfg`では`CONFIG_STACKPROTECTOR_STRONG=y`などの設定を有効化します。`bitbake -c savedefconfig virtual/kernel`で最小構成を抽出し、変更履歴を追跡します。
+
+==== インシデントレスポンス計画
+重大なセキュリティインシデント発生時の連絡経路と判断基準を事前に決めておきます。
+
+[%autowidth,options="header"]
+|===
+|フェーズ|対応内容|成果物
+|検知|監視システムやフィールド報告で異常を検出|アラート記録、初期評価メモ
+|封じ込め|影響範囲の切り分け、該当装置の隔離|隔離手順書、アクセスログ保全
+|根本原因分析|Wind Riverサポートと連携し、パッチまたは設定変更を特定|原因分析レポート
+|復旧|修正を検証環境で確認後、本番へ段階的展開|展開チェックリスト
+|振り返り|教訓の共有、手順書改訂|ポストモーテムドキュメント
+|===
+
+==== 秘匿情報の保護
+証明書やAPIトークンを安全に保管するため、`clevis`や`vault-agent`をWRL上で利用するケースが増えています。ハードウェア要件としてTPM 2.0を装備し、`tpm2-pkcs11`で秘密鍵をソフトウェアから切り離すと、フィールドでの情報漏洩リスクを大きく抑制できます。
