@@ -1,0 +1,69 @@
+== 第2章: ビルド環境構築と再現性の確保
+本章では、Yocto Projectによるビルド環境の準備、ホスト依存性の管理、再現性向上のテクニックを詳述します。
+
+=== ホスト環境要件
+[cols="1,2",options="header"]
+|===
+|項目|推奨
+|CPU|8コア以上(ビルド高速化のため)。`BB_NUMBER_THREADS`を調整。
+|RAM|16GB以上。`TMPDIR`へのアクセスを高速化するためSSD推奨。
+|ディスク|最低250GB。`sstate-cache`と`downloads`共有を想定。
+|OS|Ubuntu LTS、Debian stable、Fedoraなど。glibc 2.28以上を推奨。
+|===
+
+[IMPORTANT]
+====
+DockerやPodmanを利用する場合はCROPSコンテナ(`ghcr.io/crops/poky`)の利用を検討します。ホスト依存ライブラリを隔離しつつ、`DISTRO_CODENAME`差異によるビルド失敗を回避できます。
+====
+
+=== 初期セットアップ手順
+
+. Pokyの取得
++
+[source,shell]
+----
+$ git clone git://git.yoctoproject.org/poky -b kirkstone
+$ cd poky
+----
+. 必要レイヤの追加
++
+[source,shell]
+----
+$ git clone git://git.openembedded.org/meta-openembedded -b kirkstone
+$ git clone https://github.com/meta-qt5/meta-qt5.git -b kirkstone
+----
+. ビルドディレクトリ生成
++
+[source,shell]
+----
+$ source oe-init-build-env build-kirkstone
+----
+. `conf/local.conf`の調整
++
+`MACHINE ?= "qemux86-64"`や`DL_DIR ?= "${TOPDIR}/../downloads"`など共有ディレクトリを設定。
+
+=== 再現性のためのベストプラクティス
+* **ソースミラー/ダウンロード共有**: `DL_DIR`と`sstate-cache`を社内NFSで共有し、`SSTATE_MIRRORS`を設定。
+* **レイヤバージョン固定**: `LAYERSERIES_COMPAT`を参照し、`git submodule`または`kas`でリビジョン固定。
+* **ビルド履歴管理**: `INHERIT += "buildhistory"`で成果物の差分を追跡。`buildhistory-diff`で比較可能。
+* **ローカル設定の分離**: `conf/site.conf`を利用し、マシン固有設定を抽出。
+
+=== オフライン/制限付きネットワーク対応
+|課題|対策|備考|
+|---|---|---|
+|外部ネットワーク遮断|`bitbake -c fetchall`で事前取得し、`PREMIRRORS`で社内アーカイブを優先|`BB_NO_NETWORK = "1"`を設定すると完全オフラインで検証可能|
+|社内プロキシ経由|`http_proxy`/`https_proxy`環境変数と`BB_NO_NETWORK`を組み合わせ、ライセンス合意済みサイトを許可|SSL検証用に`ca-certificates`を更新|
+|大容量成果物の配布|`wic`イメージではなく`OSTree`を導入し差分更新|`wic`と併用する場合は`IMAGE_FSTYPES += "wic.bmap"`で転送最適化|
+
+=== パフォーマンス最適化
+* `BB_NUMBER_THREADS`と`PARALLEL_MAKE`をCPUコア数に合わせて設定(例: 8コアなら`PARALLEL_MAKE = "-j 8"`).
+* `INHERIT += "rm_work"`で中間ワークを削減。ただしデバッグには不向き。
+* `TMPDIR`をtmpfsにマウントしI/Oを軽減(カーネルビルドなど大容量タスクではswap監視が必要)。
+* `ccache`を`INHERIT += "ccache"`で有効化し、再ビルド時間を短縮。
+
+=== CI/CD統合の初期ステップ
+* `bitbake -S printdiff`でシグネチャ差分を取得し、コミットによる影響を可視化。
+* `kas build`でビルドを宣言的に定義し、GitLab CIやGitHub Actionsに組み込む。
+* `bitbake --server-only`をCIで常駐させ、`bitbake --remote-layers`と組み合わせてジョブを高速起動。
+
+ビルド環境の安定化は後続章で扱うレシピ開発やテスト自動化の基盤となるため、プロジェクト開始時にガイドラインを整備しましょう。

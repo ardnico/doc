@@ -1,0 +1,76 @@
+== 第7章: テスト自動化と継続的インテグレーション
+品質保証はYocto Project導入の成否を左右します。本章ではビルド時テスト、ランタイムテスト、CI/CD統合の手順と指標を整理します。
+
+=== ビルド時テスト
+* `bitbake -c checkpkg world`: パッケージ整合性を検証。
+* `bitbake -c do_rootfs <image>`後に`oe-pkgdata-util`で依存関係を解析。
+* `oe-selftest`: BitBake/OE-Coreの自己テスト群。CIで定期実行し、環境劣化を検知。
+
+=== `ptest`によるパッケージテスト
+[source,bitbake]
+----
+inherit ptest
+SRC_URI += "file://run-ptest"
+RDEPENDS:${PN}-ptest += "bash"
+PACKAGES += "${PN}-ptest"
+----
+
+* `IMAGE_FEATURES += "ptest-pkgs"`でテスト対象をイメージに展開。
+* ターゲット上で`ptest-runner -n`を実行し、ログをCIに収集。
+* 結果は`/usr/lib/<pkg>/ptest`配下に保存される。
+
+=== `testimage`と`ptest-runner`
+|コマンド|目的|前提|
+|---|---|---|
+|`bitbake core-image-base -c testimage`|QEMU上でシナリオテストを実行|`MACHINE`がQEMU互換であること|
+|`ptest-runner -n`|インストール済み`ptest`を一括実行|`ptest`パッケージが導入済み|
+|`testimage --export`|テスト結果を`tmp/log/`にエクスポート|CIで成果物をアーティファクト化|
+
+=== LAVA/Hardware CI連携
+* `oeqa.runtime.ssh`を利用し、実機へ自動ログインしてテスト。
+* LAVAテストジョブでは`DEPLOY_DIR_IMAGE`内の`bootfiles`や`wic`を使用。
+* テスト対象ごとのデバイスツリーやブートローダ設定をCI側でテンプレート化。
+
+=== kas + GitLab CIの例
+[source,yaml]
+----
+stages:
+  - build
+  - test
+
+variables:
+  KAS_MACHINE: qemux86-64
+
+build:
+  stage: build
+  script:
+    - kas build kas/ci.yml
+  artifacts:
+    paths:
+      - build/tmp/deploy/images
+
+test:
+  stage: test
+  needs: [build]
+  script:
+    - kas shell kas/ci.yml -- bitbake core-image-base -c testimage
+----
+
+`kas build`でビルド設定をYAML化し、CIパイプラインで再現性を担保します。
+
+=== カバレッジとメトリクス
+* `ptest-runner`の成功率、`oe-selftest`結果、`bitbake -S none`によるシグネチャ差分件数を定期レポート化。
+* `buildstats`クラスを有効にしてビルド時間を収集、ボトルネックを特定。
+* `sstate`ヒット率を計測し、キャッシュ設計の改善指標とする。
+
+=== 品質ゲートの例
+[%autowidth.stretch,options="header"]
+|===
+|指標|閾値|説明
+|ptest成功率|95%以上|主要コンポーネントのユニットテスト
+|testimage|主要イメージで毎ビルド実行|QEMU/実機の動作確認
+|CVEチェック|Critical=0|`bitbake world -c cve-check`結果
+|ライセンス差分|要レビュー|`license.bbclass`から生成される`licenses.csv`
+|===
+
+Yocto Projectでのテスト自動化はWind River Linuxなど商用ディストリビューションにも応用でき、製品品質の可視化に直結します。

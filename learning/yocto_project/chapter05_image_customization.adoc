@@ -1,0 +1,85 @@
+== 第5章: イメージカスタマイズとディストリビューション設計
+製品要件に沿ったルートファイルシステムを構築するには、イメージレシピやディストリビューション設定の理解が不可欠です。本章では`IMAGE_FEATURES`や`DISTRO_FEATURES`、パッケージ管理方式、アップデート戦略を掘り下げます。
+
+=== イメージレシピの基本
+[source,bitbake]
+----
+require recipes-core/images/core-image-base.bb
+
+DESCRIPTION = "Acme minimal networking image"
+IMAGE_FEATURES += "ssh-server-openssh package-management"
+IMAGE_INSTALL += " \
+    acme-daemon \
+    busybox \
+    tcpdump \
+"
+
+export IMAGE_BASENAME = "acme-image"
+IMAGE_FSTYPES = "wic wic.bmap tar.bz2"
+----
+
+`require`を用いて既存イメージを拡張し、`IMAGE_INSTALL`で追加パッケージを列挙します。`IMAGE_FSTYPES`で複数形式を同時生成できます。
+
+=== `IMAGE_FEATURES`と`DISTRO_FEATURES`
+|変数|目的|代表例|
+|---|---|---|
+|`IMAGE_FEATURES`|イメージ単位で有効化する機能|`ssh-server-openssh`, `tools-debug`, `hwcodecs`|
+|`DISTRO_FEATURES`|ディストリビューション全体の機能ポリシー|`systemd`, `x11`, `bluetooth`, `wayland`|
+
+`DISTRO_FEATURES`でsystemdを有効化する場合、`PREFERRED_PROVIDER_virtual/bootloader`など関連設定も合わせて見直す必要があります。
+
+=== パッケージ管理とフィード
+* **IPK(opkg)**: 組み込み向け軽量パッケージ。`PACKAGE_CLASSES ?= "package_ipk"`
+* **RPM**: 企業向けで署名や依存解決機能が充実。`PACKAGE_CLASSES ?= "package_rpm"`
+* **DEB**: Debian互換の資産が活用可能。
+
+OTA更新を想定する場合はパッケージフィードをサーバへ公開し、`opkg-cl`や`rpm-ostree`を用いた差分更新を設計します。
+
+=== ルートファイルシステムのサイズ管理
+[source,bitbake]
+----
+IMAGE_ROOTFS_SIZE = "8192"          # MiB単位
+IMAGE_ROOTFS_EXTRA_SPACE = "512"
+IMAGE_OVERHEAD_FACTOR = "1.2"
+----
+
+* `badwords`クラスを利用して不要なファイルを検知。
+* `IMAGE_POSTPROCESS_COMMAND`で不要キャッシュの削除を自動化。
+
+=== OSTreeやRAUCによるアップデート
+|方式|特徴|Yoctoでの設定|
+|---|---|---|
+|OSTree|Gitのようなコンテンツアドレス型ツリー。差分配布が高速|`inherit ostree-image`、`OSTREE_REPO = "${DEPLOY_DIR_IMAGE}/repo"`|
+|RAUC|A/Bパーティション更新を行う安全なアップデータ|`IMAGE_FSTYPES += "wic.raucb"`、`inherit rauc`|
+|SWUpdate|柔軟なアップデートフレームワーク|`inherit swupdate`、`SWUPDATE_IMAGES += "${IMAGE_BASENAME}.wic"`|
+
+=== ルートファイルシステムのカスタム作業
+`ROOTFS_POSTPROCESS_COMMAND`でファイル配置を制御できます。
+[source,bitbake]
+----
+ROOTFS_POSTPROCESS_COMMAND += "acme_insert_banner;"
+
+acme_insert_banner() {
+    install -d ${IMAGE_ROOTFS}/etc/profile.d
+    cat <<'EOT' > ${IMAGE_ROOTFS}/etc/profile.d/acme.sh
+    echo 'Welcome to Acme Yocto Image'
+EOT
+}
+----
+
+=== DISTRO設定のポイント
+`meta-poky/conf/distro/poky.conf`を参考に、独自ディストリビューションを作成します。
+[source,bitbake]
+----
+DISTRO = "acme"
+DISTRO_NAME = "Acme Embedded Linux"
+DISTRO_VERSION = "1.0"
+DISTRO_FEATURES:append = " systemd security"
+VIRTUAL-RUNTIME_init_manager = "systemd"
+VIRTUAL-RUNTIME_initscripts = ""
+----
+
+`DISTRO_OVERRIDES = "${DISTRO}:poky"`などを用いると、pokyの設定を継承しつつカスタマイズできます。
+
+=== Wind River Linuxへの応用
+Wind River Linuxでは`wrlinux-image-glibc-std.bb`など既存イメージが提供されます。本章で扱った`IMAGE_FEATURES`や`ROOTFS_POSTPROCESS_COMMAND`はWRLでも同様に利用でき、Yocto Projectで培ったノウハウをそのまま適用できます。
