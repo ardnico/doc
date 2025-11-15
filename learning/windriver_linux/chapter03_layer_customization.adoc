@@ -1,0 +1,137 @@
+== 第3章: レイヤ構成とカスタマイズ
+WRLではWind Riverが提供するレイヤをベースに、製品固有の機能を追加するための社内レイヤを組み合わせます。本章ではレイヤ設計指針、レシピ拡張、設定管理の実践方法を解説します。
+
+=== レイヤ設計指針
+社内レイヤは責務ごとに分割すると保守性が高まります。
+
+* `meta-company-base`: 共通パッチ、社内標準設定(`DISTRO_FEATURES`など)を集約。
+* `meta-company-apps`: アプリケーション、サービス、systemdユニット。
+* `meta-company-security`: 監査設定、CISベンチマーク対応スクリプト、ログ転送。
+
+レイヤは`layer.conf`で互換性を定義し、対象Yocto互換バージョンを明記します。
+
+[source,bitbake]
+----
+# meta-company-base/conf/layer.conf
+BBFILE_COLLECTIONS += "company-base"
+BBFILE_PATTERN_company-base = "^${LAYERDIR}/"
+BBFILE_PRIORITY_company-base = "90"
+LAYERSERIES_COMPAT_company-base = "kirkstone wrlinux"
+----
+
+[IMPORTANT]
+====
+`LAYERSERIES_COMPAT`にWRLがベースとするYoctoリリース名(例: `kirkstone`)を含めないとBitBakeが警告を出し、将来のメンテナンスで問題になります。Wind Riverが提供するリリースノートで対応シリーズを確認してください。
+====
+
+=== レシピの追加と上書き
+WRLのレシピを拡張する場合、`bbappend`を活用します。
+
+[source,bitbake]
+----
+# meta-company-base/recipes-core/base-files/base-files_%.bbappend
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+SRC_URI += "file://issue"
+----
+
+`FILESEXTRAPATHS`で`files/`ディレクトリを先頭に追加し、`/etc/issue`などのカスタムファイルを提供します。Wind Riverが提供するレシピとの差分はGitで管理し、テンプレート更新時に`git rebase`できるよう小さなコミットに分割します。
+
+=== クラスと関数の活用
+Wind River独自の`wrlinux.bbclass`はQAチェックやパッケージ命名規則を追加します。社内ルールを組み込む場合は派生クラスを作成します。
+
+[source,bitbake]
+----
+# meta-company-base/classes/company-image.bbclass
+inherit wrlinux image_types
+
+python () {
+    # 追加QA: 必須パッケージの検証
+    required = ["openssh", "chrony"]
+    missing = [pkg for pkg in required if pkg not in d.getVar('IMAGE_INSTALL').split()]
+    if missing:
+        bb.warn("Missing required packages: %s" % ', '.join(missing))
+}
+----
+
+イメージレシピで`inherit company-image`とすることで、組織固有のチェックを自動化できます。
+
+=== デバイス設定のテンプレート化
+複数モデルに共通する設定は`bbclass`や`PACKAGECONFIG`で制御し、ハードウェア差分は`MACHINEOVERRIDES`を利用します。
+
+[source,bitbake]
+----
+# meta-company-base/conf/machine/producta.conf
+require conf/machine/include/intel-common.inc
+MACHINEOVERRIDES =. "producta:"
+SERIAL_CONSOLES ?= "115200;ttyS0"
+EXTRA_IMAGE_FEATURES += "ssh-server-dropbear debug-tweaks"
+----
+
+`MACHINEOVERRIDES`によって`files/producta/`配下のパッチや設定を条件付きで適用できます。
+
+=== 構成管理とレビュー
+レイヤの変更はGitレビューとCIで検証することが重要です。
+
+* *差分レビュー*: `devtool diff`で生成したパッチをレビューに添付し、Wind River提供レシピへの影響を確認。
+* *Lint*: `bitbake-layers show-recipes`, `bitbake-layers show-overlayed`で上書き状況を可視化。
+* *CI*: `bitbake wrlinux-image-glibc-std -k`をナイトリービルドとして実行し、失敗時に通知。
+
+=== チェックリスト
+* [ ] レイヤ構造が責務ごとに分割され、`README`で役割を明示している。
+* [ ] `LAYERSERIES_COMPAT`と`BBFILE_PRIORITY`が適切に設定されている。
+* [ ] `bbappend`の差分が最小限に抑えられ、上流アップデート時のマージが容易である。
+* [ ] カスタムクラスや関数にドキュメントコメントを付与し、再利用性を確保している。
+* [ ] CIでレイヤ変更を検証するパイプラインが整備されている。
+
+=== さらに掘り下げるべきポイント
+
+==== Dynamic Layersの活用
+WRLでは`BBPATH`へのパス追加だけでなく、条件によってレイヤを動的に有効化する`dynamic-layers`機能が利用できます。製品ラインごとにレイヤ構成が異なる場合、`conf/layer.conf`で以下のように制御します。
+
+[source,bitbake]
+----
+DYNAMIC_LAYERS += "\
+    meta-company-diagnostics:${@'1' if d.getVar('DISTRO_FEATURES').find('diag') != -1 else ''} \
+"
+----
+
+`DISTRO_FEATURES`に`diag`が含まれている場合のみ、診断機能レイヤが追加されます。テンプレートで`DISTRO_FEATURES:append = " diag"`を設定すれば、プロジェクト固有の拡張を柔軟に切り替えられます。
+
+==== レイヤ品質の自動検証
+`yocto-check-layer`を利用すると、レイヤ内のレシピがYocto規約に準拠しているか静的解析できます。
+
+[source,bash]
+----
+yocto-check-layer \
+  ../layers/meta-company-base \
+  -o reports/meta-company-base
+----
+
+レポートには未使用変数や`SUMMARY`未設定などの警告が出力されるため、CIに組み込み定期的に監視します。
+
+==== ポリシーのバージョニング
+レイヤごとの互換性を明確化するため、`conf/layer.conf`に`LAYER_CONF_VERSION`を定義し、破壊的変更時にバージョンを更新します。
+
+[source,bitbake]
+----
+LAYER_CONF_VERSION_company-base = "3"
+----
+
+ビルド環境側では`bitbake-layers show-layers`の出力にバージョンが表示されるため、チーム間で整合性チェックが容易になります。
+
+==== アーティファクトのテンプレート化
+レイヤが提供するスクリプトや設定ファイルは、`templates/`ディレクトリを設けて`wrlinux-setup`との連携を検討します。例えば、社内共通の`feature/company-hardening`テンプレートを定義し、`local.conf`や`bblayers.conf`への追記を自動化できます。
+
+テンプレートは以下の構成で管理します。
+
+```
+meta-company-base/
+  templates/
+    feature/
+      company-hardening/
+        conf/local.conf.append
+        conf/bblayers.conf.append
+        README
+```
+
+これにより、新規プロジェクトの初期セットアップが`./wrlinux-setup --templates feature/company-hardening`で完結します。

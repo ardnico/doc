@@ -1,0 +1,134 @@
+== 第4章: デバッグとプロファイリング
+本章ではWRL環境でのデバッグ、ログ解析、パフォーマンスプロファイリング手法を紹介します。Wind Riverが提供するツールとオープンソースツールを組み合わせ、問題解決の再現性を高めます。
+
+=== ログ収集と可視化
+WRLイメージには`systemd-journald`が標準で含まれるため、`journalctl`でログを取得します。
+
+[source,bash]
+----
+journalctl -u my-service.service --no-pager
+journalctl --since "2024-01-01 09:00" --until "2024-01-01 12:00"
+----
+
+ログを永続化する場合は`JOURNAL_STORAGE=persistent`を設定し、`/var/log/journal`を監視対象に加えます。Wind Riverは`wrlinux-logrotate`レシピを提供しており、定期ローテーションと転送設定を簡素化できます。
+
+[NOTE]
+====
+WRL 23以降では`rsyslog`を追加するテンプレートが用意されており、`feature/logging`を適用するとリモートSyslog転送が有効になります。
+====
+
+=== カーネルデバッグ
+カーネルの問題解析には`kgdb`, `ftrace`, `crash`ユーティリティを利用します。
+
+[source,bitbake]
+----
+# conf/local.conf
+EXTRA_IMAGE_FEATURES += "debug-tweaks"
+KERNEL_FEATURES:append = " features/debug/branch-tracer.scc"
+----
+
+`debug-tweaks`はrootパスワード未設定など開発時の利便性を提供します。運用ビルドでは無効化し、セキュリティ影響を最小化してください。
+
+カーネルパニック解析では`kdump`を有効化し、クラッシュダンプを保存します。
+
+[source,bash]
+----
+bitbake wrlinux-image-glibc-std -c menuconfig
+# Kernel hacking -> Kernel debugging -> KGDB: kernel debugger
+----
+
+=== アプリケーションデバッグ
+Wind Riverツールチェーンは`gdb`, `valgrind`, `strace`を含みます。SDKを利用する場合、以下のコマンドでターゲット上のアプリをデバッグします。
+
+[source,bash]
+----
+# ホスト上で
+source /opt/windriver/setup-sdk-product-a.sh
+gdb --tui ./build-target/usr/bin/my-app
+----
+
+ターゲットとのリモートデバッグには`gdbserver`を使用します。
+
+[source,bash]
+----
+# ターゲット
+/usr/bin/gdbserver :2345 /usr/bin/my-app
+
+# ホスト
+${CC} -g -O0 -o my-app-debug my-app.c
+${GDB} my-app-debug
+(gdb) target remote target-ip:2345
+----
+
+=== パフォーマンスプロファイリング
+`perf`, `LTTng`, `trace-cmd`を組み合わせ、CPU/IOボトルネックを可視化します。Wind Riverの`feature/latency`テンプレートを適用すると計測ツールが自動的に有効化されます。
+
+[source,bash]
+----
+perf record -g -- sleep 10
+perf report
+
+lttng create my-session
+lttng enable-event -k sched_switch
+lttng start
+sleep 5
+lttng stop
+lttng view
+----
+
+`trace-cmd`はリアルタイム性の検証に有用です。`trace-cmd record -e irq_handler_entry`などで割り込みレイテンシを観測します。
+
+=== ネットワーク・ストレージ解析
+* *ネットワーク*: `tcpdump`, `ethtool -S`, `nstat`を活用し、Wind Riverの`feature/networking`テンプレートで提供されるQoSツールを参照。
+* *ストレージ*: `blktrace`, `fio`によりIO特性を測定。`fio`はWRLの`meta-rt`レイヤに含まれる場合があるため、`bitbake fio`で追加。
+
+=== フィードバックループの構築
+* *バグ報告*: 再現手順、ログ、イメージの`manifest`を添付し、Wind Riverサポートへケース登録。
+* *チーム内共有*: デバッグ手順は社内Wikiに「症状」「原因」「対処」のテンプレートで記録。
+* *自動テスト*: `ptest`が有効なパッケージはターゲット上で`ptest-runner`を実行し、リグレッションを検出します。
+
+=== チェックリスト
+* [ ] `journalctl`でログを時間軸で抽出できるようフィルタ例を整備した。
+* [ ] カーネルデバッグ用に`kgdb`, `kdump`の設定を記録した。
+* [ ] SDK経由の`gdbserver`接続手順を開発者向けガイドとして配布した。
+* [ ] `perf`や`LTTng`の結果を解析する標準フォーマットをチームで定義した。
+* [ ] 不具合フィードバックのテンプレートを用意し、Wind Riverサポートとのやり取り履歴を追跡できるようにした。
+
+=== さらなる分析テクニック
+
+==== Core dumpとシンボル管理
+運用環境でのクラッシュ解析では、シンボル付きバイナリと`core`ファイルを収集する仕組みが不可欠です。`systemd-coredump`を有効化し、保存先をNFSサーバやアーカイブストレージにリダイレクトします。
+
+[source,ini]
+----
+# /etc/systemd/coredump.conf.d/10-storage.conf
+[Coredump]
+Storage=external
+ExternalSizeMax=2G
+ProcessSizeMax=2G
+----
+
+ビルド側では`INHERIT += "buildstats"`と`INHERIT += "debug-tweaks"`を併用し、`tmp/deploy/images/.../symbols/`配下のデバッグシンボルを保管します。`eu-stack`や`addr2line`を用いてコールスタックを復元し、原因特定につなげます。
+
+==== トレースとイベント相関
+複数ノードに跨る問題の場合、`fluent-bit`や`Vector`などのログ収集基盤と連携し、`trace-id`を埋め込んだログを集約します。Wind Riverのリアルタイムテンプレートでは、`trace-cmd`と`kernelshark`を組み合わせたトレーシングが推奨されており、`trace-cmd report --stat`でイベント頻度を解析できます。
+
+==== 電力・熱設計の計測
+産業機器では熱暴走や電力制限が不具合の引き金となることがあります。`powertop`, `turbostat`, `perf energy`などの計測ツールをイメージに追加し、BoM(部品表)上の制約と突き合わせて解析します。
+
+[source,bitbake]
+----
+IMAGE_INSTALL:append = " powertop turbostat"
+----
+
+計測結果はハードウェアチームにフィードバックし、ファン制御やCPUガバナ設定の調整に活用します。
+
+==== Postmortemデバッグフロー
+重大障害発生時の手順を事前に定義しておくと、対応が迅速になります。
+
+1. アラート受信後、`systemd-analyze blame`で起動遅延や失敗サービスを確認。
+2. `journalctl -b -1`で前回ブートのログを抽出し、再起動直前のイベントを特定。
+3. `crash`ユーティリティで`vmcore`を解析し、`bt`や`ps`コマンドでカーネルスレッドの状態を確認。
+4. Wind Riverサポートへのエスカレーション時に、コアダンプ、`manifest`、再現手順を添付。
+
+このフローをRunbook化し、シフト要員でも同じ手順を踏めるよう訓練しておきます。

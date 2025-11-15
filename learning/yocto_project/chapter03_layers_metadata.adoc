@@ -1,0 +1,61 @@
+== 第3章: レイヤ構造とメタデータ設計
+Yocto Projectの柔軟性はレイヤによる責務分離に支えられています。本章ではレイヤの種類、優先度、互換性管理、社内レイヤ設計のベストプラクティスを扱います。
+
+=== レイヤの分類
+|レイヤ種別|役割|例|
+|---|---|---|
+|ディストリビューションレイヤ|`DISTRO`設定、ポリシー、パッケージフィード構成|`meta-poky`, `meta-windriver`|
+|マシン/BSPレイヤ|`MACHINE`固有設定、U-Boot/Kernelレシピ|`meta-yocto-bsp`, `meta-freescale`|
+|アプリケーションレイヤ|ミドルウェア、ユーザー空間アプリのレシピ|`meta-openembedded/meta-oe`, 社内`meta-company-app`|
+|拡張レイヤ|言語ランタイム、GUIなど特定ドメイン|`meta-qt5`, `meta-virtualization`|
+
+[NOTE]
+====
+`bblayers.conf`ではレイヤ追加順が優先度に影響しません。優先度は各レイヤの`layer.conf`で定義される`BBFILE_PRIORITY`で調整します。
+====
+
+=== レイヤ互換性とポリシー
+* `LAYERSERIES_COMPAT_meta-example = "kirkstone langdale"`のように対応ブランチを明記。
+* `REQUIRED_DISTRO_FEATURES`や`REQUIRED_MACHINE_FEATURES`で前提条件を宣言。
+* CIで`yocto-check-layer`を実行し、コーディング規約や互換性を検証。
+
+=== `layer.conf`の主要設定
+[source,bitbake]
+----
+BBPATH .= ":${LAYERDIR}"
+BBFILES += "${LAYERDIR}/recipes-*/*/*.bb ${LAYERDIR}/recipes-*/*/*.bbappend"
+BBFILE_COLLECTIONS += "company"
+BBFILE_PATTERN_company = "^${LAYERDIR}/"
+BBFILE_PRIORITY_company = "7"
+LAYERSERIES_COMPAT_company = "kirkstone"
+----
+
+`BBFILE_COLLECTIONS`は複数レイヤからのメタデータ収集に用いられ、`BBFILE_PATTERN`で対象パスを正規表現指定します。`BBFILE_PRIORITY`が高いほど`.bbappend`が優先され、競合解決に影響します。
+
+=== 社内レイヤ設計ガイドライン
+. **責務分離**: BSP、ミドルウェア、アプリケーションをレイヤ単位で分割し、依存関係を明示。
+. **命名規約**: `meta-<company>-<domain>`形式で整理。例: `meta-acme-networking`。
+. **ポリシー管理**: 社内ポリシー(ライセンス、セキュリティ)はディストリビューションレイヤに集約し、プロダクトごとの差異は`DISTROOVERRIDES`で制御。
+. **共通クラス**: 複数レシピで共有する関数は`classes/`に配置し、`inherit company-qa`のように再利用。
+
+=== `.bbappend`運用の注意点
+* `.bbappend`ファイル名は対象レシピのレイヤバージョンと一致させる(`example_%.bbappend` or `example_1.0.bbappend`)。
+* 複数レイヤから同一レシピに`.bbappend`する場合、`BBFILE_PRIORITY`が高い順に適用。意図しない上書きを防ぐため、`CONF_VERSION`と`FILESEXTRAPATHS`の整理が重要。
+* `.bbappend`だけで完結しない大幅改造はレシピのフォークを検討し、メンテナンス性を確保。
+
+=== レイヤ品質チェック
+`yocto-check-layer`の結果例:
+[source,shell]
+----
+$ yocto-check-layer ../meta-company
+LayerType: application
+LayerName: meta-company
+Result: PASSED (5 tests)
+----
+主に以下を検証します。
+* `conf/layer.conf`の必須変数定義
+* `LAYERSERIES_COMPAT`の記述
+* サンプルレシピのlint
+
+=== Wind River Linuxとの連携
+WRLに社内レイヤを追加する場合も同じ原則が適用されます。`meta-windriver`の優先度を理解し、WRL特有の`wrlinux-distro`設定に`.bbappend`する際は、Yocto Project側の標準レイヤ構造を踏まえた差分設計が求められます。

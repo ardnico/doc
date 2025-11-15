@@ -1,0 +1,15 @@
+= Wind River Linux 学習ガイド
+:toc:
+:toclevels: 2
+:sectnums:
+
+// 各章は個別ファイルとして管理し、全体の可読性と再利用性を向上させる。
+include::windriver_linux/preface.adoc[]
+include::windriver_linux/chapter01_environment.adoc[]
+include::windriver_linux/chapter02_build_system.adoc[]
+include::windriver_linux/chapter03_layer_customization.adoc[]
+include::windriver_linux/chapter04_debugging.adoc[]
+include::windriver_linux/chapter05_bsp.adoc[]
+include::windriver_linux/chapter06_security.adoc[]
+include::windriver_linux/chapter07_compliance.adoc[]
+include::windriver_linux/chapter08_operations.adoc[]

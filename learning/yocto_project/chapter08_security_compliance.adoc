@@ -1,0 +1,77 @@
+== 第8章: セキュリティとコンプライアンス管理
+Yocto ProjectはCVE対応やライセンス追跡、SBOM生成などセキュリティ/コンプライアンス機能を提供します。本章では開発ライフサイクルに組み込む具体的な手順を示します。
+
+=== CVE管理
+[source,bitbake]
+----
+INHERIT += "cve-check"
+CVE_DB ?= "nvd"
+CVE_VERSION = "cves"
+----
+
+* `bitbake core-image-base -c cve-check`でレポート生成。`tmp/deploy/cve/`にJSON/HTMLが出力。
+* `CVE_CHECK_SKIP_RECIPE`で誤検知を抑制。承認理由をコメントで残す。
+* `meta-security`レイヤを導入し、`cve-update-db`でローカルDBを最新化。
+
+=== ライセンスコンプライアンス
+[source,bitbake]
+----
+INHERIT += "license"
+LICENSE_CREATE_PACKAGE = "1"
+COPYLEFT_LICENSE_INCLUDE = "GPLv3"
+COPYLEFT_LICENSE_EXCLUDE = "CLOSED"
+----
+
+* `bitbake core-image-base -c populate_lic`で`licenses/`ディレクトリを生成し、配布物に同梱。
+* `LICENSE_CREATE_PACKAGE`を有効化すると、各パッケージのライセンスファイルが個別パッケージ化。
+* `COPYLEFT_REPORT`でGPL/LGPLコンポーネント一覧を出力し、法務レビューを効率化。
+
+=== SBOM(Software Bill of Materials)生成
+* `INHERIT += "create-spdx"`でSPDX 2.2形式のSBOMを生成。
+* `SPDX_VERSION = "SPDX-2.3"`などバージョン指定が可能。
+* `spdx-create`タスクはビルド時間が延びるため、CIでナイトリービルドとして実行し成果物をアーカイブ。
+
+=== ランタイムハードニング
+|対策|BitBake設定|備考|
+|---|---|---|
+|セキュアブート|`INHERIT += "uefi-sign"`、`UEFI_SIGN_CERT`を指定|`meta-security`レイヤのサポートを活用|
+|ASLR/Stack Protector|`DISTRO_FEATURES:append = " security"`|`packagegroup-core-security`で関連ツールを導入|
+|イメージ署名|`SIGNING_KEY`、`SIGNATURE_TYPE`を設定|OSTree/RAUCと組み合わせて検証|
+
+=== セキュリティインシデント対応フロー
+. CVEアラートを受領し、対象レシピとバージョンを特定(`cve-check`ログ参照)。
+. 上流レイヤのパッチを確認し、必要なら社内レイヤでバックポート。
+. `bitbake <recipe> -c cleansstate`後に再ビルドし、`ptest`や`testimage`で回帰テスト。
+. リリースノートにCVE-IDと対処内容、影響範囲を記載。
+
+=== 監査ログと追跡性
+* `INHERIT += "buildhistory"`で成果物差分を追跡。監査対応で証跡を提示可能。
+* `DL_DIR`, `SSTATE_DIR`のハッシュ履歴を保存し、再現ビルドを保証。
+* `signing-keys/`ディレクトリをGit管理から除外し、HSMやVaultで保護。
+
+=== コンプライアンスCIの例
+[source,yaml]
+----
+stages:
+  - build
+  - compliance
+
+build:
+  stage: build
+  script:
+    - kas build kas/compliance.yml
+
+compliance:
+  stage: compliance
+  needs: [build]
+  script:
+    - kas shell kas/compliance.yml -- bitbake world -c cve-check
+    - kas shell kas/compliance.yml -- bitbake world -c create-spdx
+  artifacts:
+    paths:
+      - build/tmp/deploy/cve
+      - build/tmp/deploy/spdx
+----
+
+=== Wind River Linuxへの展開
+WRLでも`cve-check`や`create-spdx`が利用可能で、ベンダ提供のセキュリティアドバイザリと組み合わせることで、商用サポートを活かしながら社内コンプライアンスプロセスを強化できます。
