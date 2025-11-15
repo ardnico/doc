@@ -1,0 +1,147 @@
+= さらなる学習のための推奨トピック集
+:toc:
+:toclevels: 2
+
+本資料は、Wind River LinuxおよびYocto Projectの学習を終えた、または並行して取り組んでいるエンジニアが次のステップとして習得を検討すべき分野をまとめたものです。それぞれのトピックについて、学習の意義、具体的な着眼点、推奨リソース例を提示し、業務適用のヒントを示します。
+
+== 組込みLinuxの基礎強化
+
+*目的*: Wind River LinuxやYocto Projectの高度な機能を活かすには、Linuxカーネルやユーザランドの基本挙動を深く理解しておく必要があります。
+
+* 着眼点
+** カーネル構造 (プロセス管理、メモリ管理、デバイスドライバ、ファイルシステム) の全体像
+** systemdのユニット構成と依存制御、カスタムサービス作成手順
+** GNU CoreutilsやBusyBoxなど主要ユーザランドツールの振る舞い比較
+* 推奨リソース
+** 書籍: 『詳解 Linuxカーネル 第3版』、『Professional Embedded Linux Programming』
+** オンライン: The Linux Foundation Training (LFD450など)、ELC/EOSS講演資料
+
+== Yocto Project拡張機能の深掘り
+
+*目的*: Wind River Linuxとの親和性が高いOpenEmbedded派生のエコシステムを最大限活用するため、上級機能を整理します。
+
+* 着眼点
+** メタデータQA機能 (`bitbake -S printdiff`, `insane.bbclass`) の活用
+** Layer Index API・Devtoolでのレシピ雛形生成、自動パッチ取り込み
+** Hash EquivalenceやSState Cache共有のベストプラクティス
+* 推奨リソース
+** Yocto Project Summitセッション資料
+** 『Embedded Linux Systems with the Yocto Project 3rd Edition』
+
+== セキュアブートとトラストチェーン
+
+*目的*: 製品出荷や現場運用で必須となるブートローダ保護と鍵管理の実装力を強化します。
+
+* 着眼点
+** U-Boot / EFI Secure Bootの比較とWind River Linux BSPへの適用手順
+** Hardware Root of Trust (TPM, HSM, ARM TrustZone) の活用パターン
+** 鍵ローテーション、ファームウェア署名、信頼アンカーの運用ルール
+* 推奨リソース
+** NIST SP 800シリーズ (特にSecure Bootに関するガイドライン)
+** TrustedFirmware.org、Wind River LabsのサンプルBSP
+
+== リアルタイム性とパフォーマンスチューニング
+
+*目的*: 制御系やエッジ分析で求められるリアルタイム要件を満たすための調整力を高めます。
+
+* 着眼点
+** PREEMPT_RTカーネルの設定項目とWind River Linux Real-Time Profile
+** CPU隔離 (isolcpus, cpuset) とIRQバランシング、NUMA最適化
+** 低遅延通信 (TSN, DPDK) とプロファイリングツール (ftrace, perf, LTTng) の導入
+* 推奨リソース
+** 『Real-Time Linux Programming』、Wind River Helix Virtualization Platformドキュメント
+** Linux Plumbers Conference Real-Time track資料
+
+== ソフトウェア品質保証とテスト自動化
+
+*目的*: 大規模組込み開発での品質担保と継続的な検証を支える技術を習得します。
+
+* 着眼点
+** LAVA、pytest、Robot Frameworkを組み合わせたハードウェア・イン・ザ・ループテスト
+** Yocto Testimage、ptest、ktapを使った自動評価ライン構築
+** SBOM (Software Bill of Materials) 生成と脆弱性管理ワークフロー (VEX, CSAF)
+* 推奨リソース
+** Automotive SPICEやISO 26262のソフトウェア品質章
+** OpenEmbedded QAワーキンググループの資料
+
+== DevOps / CI/CD for Embedded
+
+*目的*: エンタープライズ向けDevOpsプラクティスを組込み開発へ適用し、リリースサイクルを短縮します。
+
+* 着眼点
+** GitLab CI, Jenkins, GitHub Actionsを使ったビルドパイプラインとアーティファクト管理
+** コンテナ化ビルド (Podman, Docker, Buildah) とリソース共有戦略
+** 現場機器への段階的ロールアウト (Canary, A/Bテスト) とリモートメンテナンス
+* 推奨リソース
+** Wind River Studio DevSecOps資料
+** 『Accelerate』やDORAレポートに基づくメトリクス設計
+
+== クラウド連携とエッジプラットフォーム
+
+*目的*: Edge-to-Cloud統合による可観測性やOTA更新を実現するためのアーキテクチャ知識を補完します。
+
+* 着眼点
+** MQTT, AMQP, OPC UAなど産業プロトコルとクラウドIoTサービスのブリッジ
+** OTAフレームワーク (SWUpdate, Mender, RAUC) の比較導入
+** Observabilityスタック (Prometheus, Grafana, Loki, Jaeger) とWind River Studio Analyticsの連携
+* 推奨リソース
+** 『Designing Distributed Systems』
+** CNCF Project Landscape (Edge/IoTカテゴリ)
+
+== 安全規格・法規制対応
+
+*目的*: 産業・医療・輸送など各業界の規格順守に必要な文書化・プロセス整備を学びます。
+
+* 着眼点
+** IEC 62304、IEC 62443、DO-178Cなど領域別要求事項とソフトウェア開発プロセス
+** SBOMとライセンスコンプライアンスを支援するツール (FOSSology, Black Duck)
+** トレーサビリティマトリクス、レビュー記録、監査対応テンプレートの整備
+* 推奨リソース
+** Wind River Professional Servicesのホワイトペーパー
+** 各規格の公式ガイダンスおよび解説書
+
+== ハードウェア基礎と信頼性設計
+
+*目的*: BSP開発やハードウェア依存ロジックの最適化を支える基礎知識を強化します。
+
+* 着眼点
+** SoCアーキテクチャ (ARMv8, RISC-V, x86) と周辺デバイス (PCIe, SPI, I2C) の仕様理解
+** 電源設計、熱設計、EMC対策などハードウェア信頼性の指針
+** JTAGデバッグ、ロジックアナライザ、オシロスコープを使ったトラブルシュート
+* 推奨リソース
+** 各SoCベンダのリファレンスマニュアル、Wind River BSP Developer Resources
+** 『Hardware/Firmware Interface Design』
+
+== 組織とプロジェクトマネジメント
+
+*目的*: 技術力だけでなく、複数チームを跨ぐ開発体制・プロセスを円滑に運営するスキルを磨きます。
+
+* 着眼点
+** スクラムやカンバンを組込み開発へ適用する際の注意点
+** RACIチャート、責務分掌、変更管理ボードの設計
+** ナレッジマネジメント (Confluence, DITA, AsciiDoc) と教育プログラム構築
+* 推奨リソース
+** PMI-ACPやScaled Agile Framework (SAFe) の資料
+** Wind Riverカスタマーサクセス事例
+
+== 学習ロードマップの組み合わせ方
+
+*目的*: 各トピックをどの順序で習得すべきか、既存スキルとの関連を把握します。
+
+* 推奨ステップ
+. 基礎強化 → Yocto拡張 → セキュアブート → リアルタイム性
+. テスト自動化 → DevOps → クラウド連携 → 規格対応
+. ハードウェア基礎 → プロジェクトマネジメント → 全体統合
+* Tips
+** 12週ロードマップに組み込む場合は、隔週で理論とハンズオンを交互に設定し、学習ログを社内Wikiで共有する。
+** 社内PoCや小規模プロジェクトへ早期に適用し、成功事例を蓄積して全社横展開を図る。
+
+== 参考リンク集
+
+* Wind River Studio Online Resources: https://www.windriver.com/products/studio
+* Yocto Project Official Documentation: https://docs.yoctoproject.org/
+* OpenEmbedded Layer Index: https://layers.openembedded.org/
+* Linux Foundation Training Catalog: https://training.linuxfoundation.org/
+* Trusted Computing Group: https://trustedcomputinggroup.org/
+* CNCF Edge Landscape: https://landscape.cncf.io/?category=edge
+
